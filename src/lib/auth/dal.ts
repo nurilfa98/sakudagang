@@ -15,20 +15,26 @@
 //   (bagian "Step 1: Read the current user")
 
 import "server-only";
+import { eq } from "drizzle-orm";
 import { cacheLife } from "next/cache";
 import { redirect } from "next/navigation";
+import { db } from "@/lib/db";
+import { roles, stores, userRoles, users } from "@/lib/db/schema";
 import { can, type Permission } from "./permissions";
-import type { Role } from "./roles";
+import { isRole, type Role } from "./roles";
 import { getSession } from "./session";
 
 // DTO (Data Transfer Object): hanya field yang aman & dibutuhkan UI.
-// password_hash dan data sensitif lain TIDAK ikut.
+// password_hash TIDAK ikut.
 export type CurrentUser = {
   id: string;
   fullName: string;
   email: string;
   roles: Role[];
   mustChangePassword: boolean;
+  // Toko tempat user bekerja; null hanya untuk SUPERADMIN. Semua query &
+  // action fitur bisnis WAJIB membatasi data ke storeId ini (multi-tenant).
+  storeId: string | null;
 };
 
 // 'use cache: private' = cache khusus data milik satu user (membaca cookie).
@@ -51,15 +57,58 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   "use cache: private";
   cacheLife("minutes");
 
-  const { userId } = await getSession();
+  const { userId, sessionVersion } = await getSession();
   if (!userId) return null;
 
-  // TODO: ambil user dari database (tabel users belum dibuat). Cookie session
-  // tetap valid sampai kedaluwarsa walau user sudah dinonaktifkan, karena itu
-  // status user dan sessionVersion (lihat lib/auth/session.ts) harus dicek ulang
-  // ke database di sini, lalu kembalikan CurrentUser. Selama belum
-  // diimplementasi, semua request dianggap belum login.
-  return null;
+  // Cookie session tetap valid sampai kedaluwarsa walau user sudah
+  // dinonaktifkan. Karena itu status user selalu dicek ulang ke database.
+  // Toko ikut di-join: user dari toko yang dinonaktifkan (langganan berhenti)
+  // tidak bisa masuk walau akunnya sendiri masih aktif.
+  const [user] = await db
+    .select({
+      id: users.id,
+      fullName: users.fullName,
+      email: users.email,
+      isActive: users.isActive,
+      mustChangePassword: users.mustChangePassword,
+      sessionVersion: users.sessionVersion,
+      storeId: users.storeId,
+      storeIsActive: stores.isActive,
+    })
+    .from(users)
+    .leftJoin(stores, eq(users.storeId, stores.id))
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (!user || !user.isActive) return null;
+  if (user.storeId && !user.storeIsActive) return null;
+  // Password sudah diganti/di-reset setelah cookie ini dibuat → login ulang.
+  if (user.sessionVersion !== sessionVersion) return null;
+
+  const roleRows = await db
+    .select({ name: roles.name })
+    .from(userRoles)
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .where(eq(userRoles.userId, user.id));
+
+  return {
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    roles: roleRows.map((r) => r.name).filter(isRole),
+    mustChangePassword: user.mustChangePassword,
+    storeId: user.storeId,
+  };
+}
+
+// Untuk halaman/aksi fitur bisnis yang datanya milik SATU toko. Mengembalikan
+// user beserta storeId yang pasti terisi, sehingga query bisa langsung
+// `where(eq(products.storeId, storeId))`. SUPERADMIN (tanpa toko) diarahkan
+// ke beranda: ia mengelola toko & pemilik, bukan bertransaksi.
+export async function requireStore(permission: Permission) {
+  const user = await requirePermission(permission);
+  if (!user.storeId) redirect("/");
+  return { ...user, storeId: user.storeId };
 }
 
 // Untuk halaman/aksi yang WAJIB login. Kalau belum login → ke /login.
@@ -68,7 +117,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 //
 // User yang masih memakai password sementara diarahkan ke /change-password.
 // Karena semua page, layout, dan Server Action lewat fungsi ini, user tidak
-// bisa membuka/menjalankan apa pun sebelum mengganti password.
+// bisa membuka/menjalankan apa pun sebelum mengganti password. Halaman
+// /change-password sendiri memakai getCurrentUser() agar tidak redirect loop.
 export async function verifySession() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
@@ -77,6 +127,7 @@ export async function verifySession() {
 }
 
 // Untuk halaman yang hanya boleh dibuka user dengan permission tertentu.
+// Contoh: await requirePermission("report:view") di halaman laporan.
 //
 // Di Server Action, sering lebih enak memakai can() lalu mengembalikan pesan
 // error (ActionResult) daripada redirect:

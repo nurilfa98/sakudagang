@@ -45,7 +45,7 @@ const SHORT_SESSION_MS = 12 * 60 * 60 * 1000;
 const SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
 
 const sessionOptions: SessionOptions = {
-  cookieName: "sakusembako_session",
+  cookieName: "sakudagang_session",
   password: env.SESSION_SECRET,
   ttl: SESSION_TTL_SECONDS,
   cookieOptions: {

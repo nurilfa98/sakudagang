@@ -33,7 +33,7 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 // Menu aktif: "/" hanya cocok persis, menu lain juga aktif di sub-halamannya
-// (misal /products/123 tetap menyorot "Produk").
+// (misal /products/123 tetap menyorot "Barang").
 export function isNavActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }

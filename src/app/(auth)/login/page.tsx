@@ -2,14 +2,13 @@
 // folder tidak masuk ke URL, tapi halaman ini memakai (auth)/layout.tsx.
 //
 // page.tsx sengaja dibuat tipis: hanya menyusun komponen dari features/auth.
-// Form login belum dibuat; buat features/auth/components/login-form.tsx
-// (useActionState + action login) lalu pasang di CardContent di bawah.
 //
 // Referensi: node_modules/next/dist/docs/01-app/01-getting-started/02-project-structure.md
 // (bagian "Route groups")
 
 import type { Metadata } from "next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { LoginForm } from "@/features/auth/components/login-form";
 
 export const metadata: Metadata = {
   title: "Masuk",
@@ -17,14 +16,19 @@ export const metadata: Metadata = {
 
 export default function LoginPage() {
   return (
-    <Card>
-      <CardHeader className="text-center">
-        <CardTitle className="text-xl">Masuk ke akun Anda</CardTitle>
-        <CardDescription>Gunakan email dan password Anda.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-center text-sm text-muted-foreground">Form login belum dibuat.</p>
-      </CardContent>
-    </Card>
+    <>
+      <Card>
+        <CardHeader className="text-center">
+          <CardTitle className="text-xl">Masuk ke akun Anda</CardTitle>
+          <CardDescription>Gunakan email dan password yang diberikan pemilik toko.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LoginForm />
+        </CardContent>
+      </Card>
+      <p className="px-6 text-center text-xs text-muted-foreground">
+        Lupa password atau belum punya akun? Hubungi pemilik toko.
+      </p>
+    </>
   );
 }

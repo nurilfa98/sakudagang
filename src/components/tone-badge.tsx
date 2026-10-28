@@ -1,4 +1,4 @@
-// Badge berwarna sesuai arti status (aturan warna SakuSembako). Semua badge
+// Badge berwarna sesuai arti status (aturan warna SakuDagang). Semua badge
 // status di aplikasi memakai komponen ini, supaya satu arti = satu warna.
 //
 //   success = selesai/berhasil (emerald)    active  = sedang berjalan (indigo)

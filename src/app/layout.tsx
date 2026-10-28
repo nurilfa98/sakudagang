@@ -27,9 +27,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  // Halaman cukup menulis `title: "Masuk"`, hasilnya "Masuk | SakuSembako".
-  title: { default: "SakuSembako", template: "%s | SakuSembako" },
-  description: "Project Financial Control & Petty Cash Management System",
+  // Halaman cukup menulis `title: "Masuk"`, hasilnya "Masuk | SakuDagang".
+  title: { default: "SakuDagang", template: "%s | SakuDagang" },
+  description: "Kasir, stok barang, dan laporan laba untuk toko kecil",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

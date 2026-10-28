@@ -1,12 +1,20 @@
-# Alur Bisnis SakuSembako
+# Alur Bisnis SakuDagang
 
-Acuan untuk memahami cara kerja SakuSembako: pencatatan **kasir**, **stok
-barang**, dan **laporan keuangan** warung sembako. Tujuan aplikasi: pemilik
-warung tahu omset harian, laba rugi, dan bisa memisahkan **uang modal** (yang
-harus diputar lagi untuk belanja stok) dari **uang laba** (yang boleh diambil).
+Acuan untuk memahami cara kerja SakuDagang: pencatatan **kasir**, **stok
+barang**, dan **laporan keuangan** untuk toko ritel kecil yang punya stok
+(warung sembako, toko kelontong, toko bangunan, toko pertanian, dll). Tujuan
+aplikasi: pemilik toko tahu omset harian, laba rugi, dan bisa memisahkan
+**uang modal** (yang harus diputar lagi untuk belanja stok) dari **uang laba**
+(yang boleh diambil). Klien pertama adalah warung sembako, jadi contoh di
+dokumen ini memakai konteks warung.
 
 Dokumen ini menjelaskan aturan bisnis; struktur kode ada di
-[ARCHITECTURE.md](./ARCHITECTURE.md). Satu deployment = satu warung.
+[ARCHITECTURE.md](./ARCHITECTURE.md).
+
+**Multi-tenant (SaaS).** Satu deployment melayani banyak **toko**. Setiap
+Pemilik dan Kasir terikat pada tepat satu toko, dan hanya melihat data toko
+itu. Superadmin (pengelola SakuDagang) membuat toko beserta akun Pemiliknya.
+Lintas toko tidak ada: pemilik dua toko memakai dua akun (multi-cabang = v2).
 
 Status: **draf v1, disepakati 28 Oktober 2026, belum diimplementasi.** Setelah
 kode jadi, tabel "sumber kebenaran" di bawah diisi dengan nama file-nya.
@@ -14,9 +22,9 @@ kode jadi, tabel "sumber kebenaran" di bawah diisi dengan nama file-nya.
 | Aturan | File (rencana) |
 |---|---|
 | Hak akses per peran | `src/lib/auth/permissions.ts` |
-| Rumus harga modal rata-rata, laba | `src/features/barang/service.ts`, `src/features/penjualan/service.ts` |
+| Rumus harga modal rata-rata, laba | `src/features/products/service.ts`, `src/features/sales/service.ts` |
 | Daftar & arti status | `src/features/*/constants.ts` |
-| Rumus laporan | `src/features/laporan/service.ts` |
+| Rumus laporan | `src/features/reports/service.ts` |
 
 ---
 
@@ -44,10 +52,12 @@ kode jadi, tabel "sumber kebenaran" di bawah diisi dengan nama file-nya.
 
 Tiga peran: **Superadmin**, **Pemilik**, dan **Kasir**.
 
-- **Superadmin** = developer/pengelola aplikasi, bukan orang warung. Dibuat
-  lewat script saat deployment (`pnpm db:buat-superadmin`), **tidak muncul di
-  daftar pengguna**, dan tidak bisa diubah/dinonaktifkan oleh Pemilik. Tugas
-  utamanya membuat akun Pemilik dan membantu bila ada masalah teknis.
+- **Superadmin** = pengelola platform SakuDagang (developer), bukan orang
+  toko dan **tidak terikat toko mana pun**. Dibuat lewat script saat deployment
+  (`pnpm db:create-superadmin`), **tidak muncul di daftar pengguna**, dan tidak
+  bisa diubah/dinonaktifkan oleh Pemilik. Tugasnya: membuat **toko** baru,
+  membuat akun Pemilik untuk toko itu, menonaktifkan toko yang berhenti
+  berlangganan, dan membantu bila ada masalah teknis.
 - **Pemilik** memiliki **semua** hak Kasir, jadi pemilik yang menjaga warung
   sendiri cukup punya satu akun Pemilik. Saat merekrut karyawan, pemilik
   membuat akun Kasir; pekerjaan kasir berpindah tanpa mengubah apa pun di
@@ -68,12 +78,13 @@ Tiga peran: **Superadmin**, **Pemilik**, dan **Kasir**.
 | Pelanggan (data bon) | ✓ | ✓ | ✓ tambah & lihat |
 | Pengguna: buat/nonaktifkan **Kasir**, reset password | ✓ | ✓ | |
 | Pengguna: buat/nonaktifkan **Pemilik**, reset password | ✓ | | |
+| Toko: buat, ubah data, nonaktifkan (langganan berhenti) | ✓ | ubah data toko sendiri | |
 | Melihat & mengelola akun Superadmin | script saja | | |
 
-Superadmin diberi semua hak operasional agar bisa membantu Pemilik (mis.
-mengecek laporan saat ada keluhan), tetapi **bukan** untuk dipakai
-sehari-hari: transaksi yang dibuat Superadmin tetap tercatat atas namanya,
-sehingga terlihat di riwayat.
+Superadmin punya semua permission, tetapi karena tidak terikat toko ia
+**tidak bisa bertransaksi** (layar kasir, pembelian, dll. menolak user tanpa
+toko). Untuk membantu Pemilik yang mengeluh, Superadmin membuka halaman toko
+tersebut dalam mode **lihat saja** (v1.1; di v1 cukup lewat database).
 
 Alasan Kasir tidak melihat harga modal: margin warung adalah informasi pemilik.
 Layar kasir hanya menampilkan harga jual.
@@ -81,16 +92,23 @@ Layar kasir hanya menampilkan harga jual.
 Permission (format `<sumber-daya>:<aksi>`), rencana:
 
 ```
-penjualan:catat      penjualan:batal-sendiri   penjualan:batal-semua
-bon:lunasi           pelanggan:kelola
-barang:lihat         barang:kelola             barang:lihat-modal
-pembelian:kelola     pengeluaran:kelola        opname:kelola
-laporan:lihat        pengguna:kelola-kasir     pengguna:kelola-pemilik
+sale:create          sale:void-own             sale:void-all
+credit:settle        customer:manage
+product:view         product:manage            product:view-cost
+purchase:manage      expense:manage            stock-take:manage
+report:view          user:manage-cashier       user:manage-owner
+store:manage         store:edit-own
 ```
 
-Kasir: `penjualan:catat`, `penjualan:batal-sendiri`, `bon:lunasi`,
-`pelanggan:kelola`, `barang:lihat`.
-Pemilik: semuanya kecuali `pengguna:kelola-pemilik`.
+Kasir (`CASHIER`): `sale:create`, `sale:void-own`, `credit:settle`,
+`customer:manage`, `product:view`.
+Pemilik (`OWNER`): semuanya kecuali `user:manage-owner` dan `store:manage`.
+Superadmin: semuanya, tetapi tanpa toko sehingga permission transaksi tidak terpakai.
+
+**Aturan tenant (berlaku di semua query & action):** data selalu difilter
+`store_id = toko user yang login`. Pengecekan ini ada di lapisan data
+(`requireStore()` di `lib/auth/dal.ts`), bukan hanya di UI, sehingga user
+yang menebak id dokumen toko lain tetap mendapat "tidak ditemukan".
 Superadmin: semuanya.
 
 Aturan tersembunyi untuk Superadmin (diterapkan di query & action, bukan
@@ -108,18 +126,18 @@ Data per barang:
 
 | Kolom | Keterangan |
 |---|---|
-| nama | Unik. Contoh: "Minyak Goreng 1 L", "Gula ½ kg". |
-| kategori | Dari daftar kategori (Sembako, Minuman, Rokok, Kebutuhan rumah, dst). Pemilik bisa menambah. |
-| satuan | Teks bebas pendek: pcs, kg, bungkus, botol, sachet. Hanya label; **qty selalu bilangan bulat**. |
-| harga_modal | Rata-rata tertimbang, **dihitung otomatis** dari pembelian. Boleh diisi manual hanya saat barang pertama dibuat (stok awal). |
-| harga_jual | Diatur pemilik. Bisa diubah kapan saja; penjualan lama tidak berubah karena menyimpan snapshot. |
-| stok | Jumlah saat ini. Diubah hanya lewat mutasi stok (§8), tidak pernah diedit langsung. |
-| stok_minimum | Opsional. Bila stok ≤ ini, barang masuk daftar "Perlu restock". |
-| aktif | Barang nonaktif tidak muncul di kasir, tetapi riwayatnya tetap ada. Barang **tidak pernah dihapus** bila sudah pernah dipakai di transaksi. |
+| name | Unik. Contoh: "Minyak Goreng 1 L", "Gula ½ kg". |
+| category | Dari daftar kategori (Sembako, Minuman, Rokok, Kebutuhan rumah, dst). Pemilik bisa menambah. |
+| unit | Teks bebas pendek: pcs, kg, bungkus, botol, sachet. Hanya label; **qty selalu bilangan bulat**. |
+| cost_price | Harga modal rata-rata tertimbang, **dihitung otomatis** dari pembelian. Boleh diisi manual hanya saat barang pertama dibuat (stok awal). |
+| selling_price | Harga jual, diatur pemilik. Bisa diubah kapan saja; penjualan lama tidak berubah karena menyimpan snapshot. |
+| stock | Jumlah saat ini. Diubah hanya lewat mutasi stok (§8), tidak pernah diedit langsung. |
+| min_stock | Opsional. Bila stok ≤ ini, barang masuk daftar "Perlu restock". |
+| is_active | Barang nonaktif tidak muncul di kasir, tetapi riwayatnya tetap ada. Barang **tidak pernah dihapus** bila sudah pernah dipakai di transaksi. |
 
 **Stok awal.** Saat membuat barang baru yang sudah punya stok fisik, pemilik
 mengisi stok awal + harga modal awal. Ini dicatat sebagai mutasi stok jenis
-`STOK_AWAL`, sehingga nilainya ikut masuk perhitungan rata-rata berikutnya.
+`INITIAL`, sehingga nilainya ikut masuk perhitungan rata-rata berikutnya.
 
 ---
 
@@ -135,8 +153,8 @@ Saat disimpan, untuk setiap barang (dalam satu transaksi database):
 1. Harga modal baru dihitung rata-rata tertimbang, dibulatkan ke rupiah:
 
    ```
-   harga_modal_baru = (stok_lama × harga_modal_lama + qty_beli × harga_beli)
-                      ÷ (stok_lama + qty_beli)
+   new_cost_price = (old_stock × old_cost_price + purchase_qty × unit_cost)
+                    ÷ (old_stock + purchase_qty)
    ```
 
    Contoh: stok 10 @ Rp17.000, beli 20 @ Rp18.500 →
@@ -145,16 +163,16 @@ Saat disimpan, untuk setiap barang (dalam satu transaksi database):
    Bila stok lama ≤ 0 (habis atau minus), harga modal baru = harga beli
    (rata-rata dengan stok minus tidak masuk akal).
 
-2. Mutasi stok `PEMBELIAN` +qty, stok barang bertambah.
+2. Mutasi stok `PURCHASE` +qty, stok barang bertambah.
 3. Opsional: pemilik bisa langsung mengisi **harga jual baru** di baris
    pembelian (harga grosir naik → harga jual ikut naik). Kosong = tidak berubah.
 
-Baris pembelian menyimpan `harga_beli` dan `harga_modal_sebelum/sesudah`
+Baris pembelian menyimpan `unit_cost` dan `cost_price_before/after`
 sebagai jejak.
 
 **Mengubah/membatalkan pembelian.** Pembelian yang sudah tersimpan **tidak bisa
-diedit**; bila salah, pemilik membatalkannya (status `DIBATALKAN`). Pembatalan
-membuat mutasi stok `PEMBELIAN_BATAL` −qty dan **menghitung ulang harga
+diedit**; bila salah, pemilik membatalkannya (status `VOIDED`). Pembatalan
+membuat mutasi stok `PURCHASE_VOID` −qty dan **menghitung ulang harga
 modal** dari riwayat (lihat §8). Pembatalan ditolak bila akan membuat stok
 negatif melebihi yang terjual sejak pembelian itu—pesan: "Barang dari
 pembelian ini sudah terjual, buat penyesuaian lewat stok opname."
@@ -176,29 +194,29 @@ Setiap baris menyimpan **snapshot** saat transaksi, bukan referensi ke master:
 
 | Kolom | Isi |
 |---|---|
-| barang_id, nama_barang | Nama ikut disalin agar laporan tetap terbaca bila barang diganti nama. |
+| product_id, product_name | Nama ikut disalin agar laporan tetap terbaca bila barang diganti nama. |
 | qty | Bilangan bulat ≥ 1. |
-| harga_jual | Harga jual master saat itu. Kasir **boleh mengubah** untuk satu transaksi (diskon/pembulatan), tetapi tidak boleh di bawah harga modal—pemilik bisa, kasir tidak. |
-| harga_modal | Harga modal master saat itu. Tidak tampil untuk Kasir. |
-| subtotal | harga_jual × qty. |
-| laba_kotor | (harga_jual − harga_modal) × qty. |
+| selling_price | Harga jual master saat itu. Kasir **boleh mengubah** untuk satu transaksi (diskon/pembulatan), tetapi tidak boleh di bawah harga modal—pemilik bisa, kasir tidak. |
+| cost_price | Harga modal master saat itu. Tidak tampil untuk Kasir. |
+| subtotal | selling_price × qty. |
+| gross_profit | (selling_price − cost_price) × qty. |
 
-Total penjualan = Σ subtotal. Laba kotor penjualan = Σ laba_kotor.
+Total penjualan = Σ subtotal. Laba kotor penjualan = Σ gross_profit.
 
 ### 5.2 Metode bayar
 
 | Metode | Akibat |
 |---|---|
-| `TUNAI` | Uang masuk kas hari itu. Kasir mengisi "uang diterima", aplikasi menghitung kembalian. |
+| `CASH` | Uang masuk kas hari itu. Kasir mengisi "uang diterima", aplikasi menghitung kembalian. |
 | `QRIS` | Uang masuk (non-tunai) hari itu. |
-| `BON` | Wajib pilih **pelanggan**. Penjualan berstatus bayar `BELUM_LUNAS`, menjadi piutang (§6). |
+| `CREDIT` (bon) | Wajib pilih **pelanggan**. Penjualan berstatus bayar `UNPAID`, menjadi piutang (§6). |
 
 Satu penjualan hanya satu metode. Bayar sebagian tunai + sisanya bon tidak
 didukung di v1 (buat dua transaksi).
 
 ### 5.3 Stok saat menjual
 
-- Stok dipotong **saat transaksi disimpan** (mutasi `PENJUALAN` −qty), bukan saat barang masuk keranjang.
+- Stok dipotong **saat transaksi disimpan** (mutasi `SALE` −qty), bukan saat barang masuk keranjang.
 - **Stok minus diperbolehkan.** Warung sering punya barang fisik yang belum tercatat. Kasir melihat peringatan "Stok sistem: 0" tetapi tetap bisa menyimpan. Stok minus muncul merah di daftar barang dan diluruskan saat opname (§9) atau pembelian.
 - Barang nonaktif tidak bisa dijual.
 
@@ -210,7 +228,7 @@ lalu buat yang baru.
 - Kasir: hanya penjualan **miliknya sendiri** pada **hari yang sama** (tanggal menurut `APP_TIMEZONE`).
 - Pemilik: penjualan apa pun, kapan pun.
 - Wajib mengisi alasan.
-- Akibat: status `DIBATALKAN`, mutasi stok `PENJUALAN_BATAL` +qty per baris, omset/laba hari itu berkurang. Bon yang sudah ada pelunasannya **tidak bisa** dibatalkan (batalkan pelunasannya dulu).
+- Akibat: status `VOIDED`, mutasi stok `SALE_VOID` +qty per baris, omset/laba hari itu berkurang. Bon yang sudah ada pelunasannya **tidak bisa** dibatalkan (batalkan pelunasannya dulu).
 - Penjualan yang dibatalkan tetap tampil di riwayat (dicoret), tidak dihapus.
 
 ---
@@ -221,10 +239,10 @@ lalu buat yang baru.
 |---|---|
 | Pelanggan | Nama (wajib), nomor HP (opsional), catatan. Kasir boleh menambah pelanggan baru dari layar kasir. |
 | Omset | Penjualan bon **tetap dihitung omset dan laba** pada tanggal penjualan (uang belum masuk, tapi barang sudah keluar). Laporan memisahkan "omset" dan "uang masuk". |
-| Pelunasan | Bisa sebagian atau penuh, metode `TUNAI`/`QRIS`, tanggal pelunasan. Satu pelunasan dialokasikan ke **satu** penjualan bon (pilih bon mana yang dibayar). Setelah total pelunasan = total penjualan → status bayar `LUNAS`. |
+| Pelunasan | Bisa sebagian atau penuh, metode `CASH`/`QRIS`, tanggal pelunasan. Satu pelunasan dialokasikan ke **satu** penjualan bon (pilih bon mana yang dibayar). Setelah total pelunasan = total penjualan → status bayar `PAID`. |
 | Uang masuk | Pelunasan dihitung sebagai uang masuk pada tanggal pelunasan, **bukan** omset (omset sudah dihitung saat jual). |
 | Daftar piutang | Per pelanggan: total bon, total dibayar, sisa. Pemilik dan Kasir melihat daftar ini. |
-| Batas bon | Tidak ada pembatasan otomatis di v1. Pemilik bisa menandai pelanggan "tidak boleh bon" (flag `boleh_bon = false`). |
+| Batas bon | Tidak ada pembatasan otomatis di v1. Pemilik bisa menandai pelanggan "tidak boleh bon" (flag `allow_credit = false`). |
 
 ---
 
@@ -245,27 +263,27 @@ efek berantai).
 
 ## 8. Stok & mutasi stok
 
-`barang.stok` disimpan sebagai angka agar layar kasir cepat, tetapi **setiap
-perubahan** wajib lewat tabel `mutasi_stok` dalam transaksi database yang sama.
-Mutasi adalah sumber kebenaran; bila `barang.stok` meleset, bisa dihitung
+`products.stock` disimpan sebagai angka agar layar kasir cepat, tetapi **setiap
+perubahan** wajib lewat tabel `stock_movements` dalam transaksi database yang sama.
+Mutasi adalah sumber kebenaran; bila `products.stock` meleset, bisa dihitung
 ulang dari Σ mutasi.
 
 | Jenis mutasi | Tanda | Pemicu |
 |---|:---:|---|
-| `STOK_AWAL` | + | Barang baru dibuat dengan stok awal (§3) |
-| `PEMBELIAN` | + | Pembelian disimpan (§4) |
-| `PEMBELIAN_BATAL` | − | Pembelian dibatalkan |
-| `PENJUALAN` | − | Penjualan disimpan (§5) |
-| `PENJUALAN_BATAL` | + | Penjualan dibatalkan |
-| `OPNAME` | ± | Stok opname diselesaikan (§9) |
+| `INITIAL` | + | Barang baru dibuat dengan stok awal (§3) |
+| `PURCHASE` | + | Pembelian disimpan (§4) |
+| `PURCHASE_VOID` | − | Pembelian dibatalkan |
+| `SALE` | − | Penjualan disimpan (§5) |
+| `SALE_VOID` | + | Penjualan dibatalkan |
+| `STOCK_TAKE` | ± | Stok opname diselesaikan (§9) |
 
 Setiap baris mutasi menyimpan: barang, jenis, qty (bertanda), stok sesudah,
 harga modal saat itu, referensi dokumen (id pembelian/penjualan/opname),
 pelaku, waktu.
 
 **Harga modal** mengikuti rata-rata tertimbang (§4). Bila pembelian
-dibatalkan, harga modal dihitung ulang dengan memutar ulang mutasi `STOK_AWAL`
-dan `PEMBELIAN` yang masih berlaku, urut waktu. Penjualan dan opname tidak
+dibatalkan, harga modal dihitung ulang dengan memutar ulang mutasi `INITIAL`
+dan `PURCHASE` yang masih berlaku, urut waktu. Penjualan dan opname tidak
 mengubah harga modal.
 
 ---
@@ -275,24 +293,24 @@ mengubah harga modal.
 Pemilik mencocokkan stok fisik dengan sistem. Dilakukan saat warung tutup
 agar angkanya tidak bergeser.
 
-1. **Buat opname** (status `DRAF`): aplikasi membuat satu baris per barang
-   aktif dengan `stok_sistem` saat itu. Hanya boleh ada satu opname `DRAF`.
-2. **Hitung fisik**: pemilik mengisi `stok_fisik` per barang, bisa bertahap
+1. **Buat opname** (status `DRAFT`): aplikasi membuat satu baris per barang
+   aktif dengan `system_qty` saat itu. Hanya boleh ada satu opname `DRAFT`.
+2. **Hitung fisik**: pemilik mengisi `physical_qty` per barang, bisa bertahap
    (disimpan sebagai draf). Barang yang belum diisi dianggap belum dihitung.
-   Selisih = stok_fisik − stok_sistem. Selisih ≠ 0 wajib diberi alasan:
-   `RUSAK`, `KEDALUWARSA`, `HILANG`, `DIPAKAI_SENDIRI`, `SALAH_CATAT`, `LAINNYA`.
-3. **Selesaikan** (status `SELESAI`): untuk setiap barang yang dihitung,
-   `stok_sistem` **diambil ulang** dari nilai terkini (kalau ada penjualan
+   Selisih = physical_qty − system_qty. Selisih ≠ 0 wajib diberi alasan:
+   `DAMAGED` (rusak), `EXPIRED` (kedaluwarsa), `LOST` (hilang), `PERSONAL_USE` (dipakai sendiri), `MISCOUNT` (salah catat), `OTHER` (lainnya).
+3. **Selesaikan** (status `COMPLETED`): untuk setiap barang yang dihitung,
+   `system_qty` **diambil ulang** dari nilai terkini (kalau ada penjualan
    selama opname berjalan), selisih dihitung ulang, lalu:
-   - mutasi `OPNAME` sebesar selisih, `barang.stok = stok_fisik`;
-   - **selisih kurang** → penyusutan = |selisih| × harga_modal, dicatat sebagai
+   - mutasi `STOCK_TAKE` sebesar selisih, `products.stock = physical_qty`;
+   - **selisih kurang** → penyusutan = |selisih| × cost_price, dicatat sebagai
      kerugian pada tanggal opname (mengurangi laba bersih);
    - **selisih lebih** → hanya koreksi stok, tidak menambah laba (barang sudah
      dibayar sebelumnya; kelebihan ini adalah pencatatan yang kurang, bukan untung).
    Barang yang tidak dihitung tidak berubah.
-4. Opname `SELESAI` tidak bisa diubah. Salah hitung = buat opname baru.
+4. Opname `COMPLETED` tidak bisa diubah. Salah hitung = buat opname baru.
 
-Penjualan dan pembelian **tetap boleh** berjalan selama opname `DRAF`
+Penjualan dan pembelian **tetap boleh** berjalan selama opname `DRAFT`
 (warung tidak perlu berhenti), karena stok sistem diambil ulang di langkah 3.
 
 ---
@@ -306,15 +324,15 @@ dibatalkan dan pembelian yang dibatalkan **tidak** dihitung.
 
 ```
 Omset            = Σ subtotal penjualan (semua metode, termasuk bon)
-HPP              = Σ harga_modal × qty penjualan        ← uang modal yang harus diputar
+HPP              = Σ cost_price × qty penjualan        ← uang modal yang harus diputar
 Laba kotor       = Omset − HPP
 Pengeluaran      = Σ pengeluaran operasional
-Penyusutan       = Σ penyusutan dari opname SELESAI dalam periode
+Penyusutan       = Σ penyusutan dari opname COMPLETED dalam periode
 Laba bersih      = Laba kotor − Pengeluaran − Penyusutan   ← uang laba
 
-Uang masuk       = penjualan TUNAI + QRIS + pelunasan bon (tanggal pelunasan)
+Uang masuk       = penjualan CASH + QRIS + pelunasan bon (tanggal pelunasan)
 Uang keluar      = total pembelian + pengeluaran
-Bon baru         = Σ penjualan BON dalam periode
+Bon baru         = Σ penjualan CREDIT dalam periode
 Piutang berjalan = Σ sisa bon yang belum lunas (semua periode, posisi saat ini)
 ```
 
@@ -348,7 +366,7 @@ Periode bawaan: bulan berjalan, bisa diganti. Tiga kotak besar:
 | **Piutang (uang di luar)** | Piutang berjalan | Omset yang belum jadi uang; tagih. |
 
 Di bawahnya: omset hari ini, grafik omset & laba bersih per hari dalam bulan
-ini, daftar barang **perlu restock** (stok ≤ stok_minimum atau minus), dan bon
+ini, daftar barang **perlu restock** (stok ≤ min_stock atau minus), dan bon
 yang sudah lama belum dibayar (> 30 hari).
 
 Catatan penting yang ditampilkan di dashboard: aplikasi **tidak melacak saldo
@@ -366,8 +384,9 @@ yang perlu ditagih.
 
 ## 11. Pengguna & akun
 
-- Akun **Superadmin** dibuat lewat script saat deployment (`pnpm db:buat-superadmin <email> <password> "<Nama>"`), karena tidak ada halaman daftar. Script aman dijalankan ulang (email sudah ada → hanya diperbarui).
-- **Superadmin** membuat akun **Pemilik**: nama, email, password sementara. Superadmin juga yang mereset password / menonaktifkan Pemilik.
+- Akun **Superadmin** dibuat lewat script saat deployment (`pnpm db:create-superadmin <email> <password> "<Nama>"`), karena tidak ada halaman daftar. Script aman dijalankan ulang (email sudah ada → hanya diperbarui).
+- **Superadmin** membuat **toko** (nama, jenis usaha, alamat, telepon, zona waktu), lalu akun **Pemilik** untuk toko itu: nama, email, password sementara. Superadmin juga yang mereset password / menonaktifkan Pemilik, dan menonaktifkan toko (semua user toko itu tidak bisa login).
+- **Pemilik** bisa mengubah data tokonya sendiri (nama, alamat, telepon, zona waktu), tetapi tidak bisa membuat toko lain.
 - **Pemilik** membuat akun **Kasir**: nama, email, password sementara. Pemilik bisa menonaktifkan Kasir (tidak bisa login, riwayat transaksinya tetap) dan mereset password.
 - Semua akun baru wajib mengganti password saat login pertama.
 - Akun Superadmin tidak pernah tampil di daftar pengguna.
@@ -380,7 +399,9 @@ yang perlu ditagih.
 
 Sengaja **tidak** dibuat di v1 agar aplikasi cepat bisa dipakai:
 
-- Multi-warung / cabang.
+- Multi-cabang (satu pemilik, banyak toko dalam satu akun) dan laporan gabungan.
+- Langganan & pembayaran otomatis (v1: status toko aktif/nonaktif diatur Superadmin secara manual).
+- Mode "lihat saja" Superadmin ke dalam toko klien.
 - Barcode scanner.
 - Data supplier dan hutang ke supplier.
 - Cetak struk / kirim struk via WhatsApp.
@@ -397,8 +418,8 @@ Sengaja **tidak** dibuat di v1 agar aplikasi cepat bisa dipakai:
 
 Hal yang belum diputuskan; tidak menghalangi v1 tetapi perlu jawaban sebelum fitur terkait dibuat.
 
-1. **Saldo kas laci.** Tanpa pencatatan "modal awal laci" dan setoran/penarikan, aplikasi tidak bisa menjawab "uang di laci seharusnya berapa?". Opsi v1.1: tabel `kas` sederhana (setor/tarik) + saldo = Σ uang masuk − Σ uang keluar ± setor/tarik.
-2. **Kasir mencatat pembelian?** v1: hanya Pemilik. Kalau pemilik sering tidak di warung saat barang grosir datang, Kasir perlu hak `pembelian:kelola` tanpa melihat harga modal rata-rata—perlu dipikirkan tampilannya.
+1. **Saldo kas laci.** Tanpa pencatatan "modal awal laci" dan setoran/penarikan, aplikasi tidak bisa menjawab "uang di laci seharusnya berapa?". Opsi v1.1: tabel `cash_entries` sederhana (setor/tarik) + saldo = Σ uang masuk − Σ uang keluar ± setor/tarik.
+2. **Kasir mencatat pembelian?** v1: hanya Pemilik. Kalau pemilik sering tidak di warung saat barang grosir datang, Kasir perlu hak `purchase:manage` tanpa melihat harga modal rata-rata—perlu dipikirkan tampilannya.
 3. **Harga jual di bawah modal oleh Kasir.** v1 ditolak keras. Alternatif: boleh dengan peringatan dan tercatat untuk ditinjau pemilik.
 4. **Pembatalan pembelian setelah barang terjual.** v1 ditolak; pemilik diarahkan ke opname. Apakah cukup?
 5. **Retur barang dari pelanggan** (beli lalu kembalikan sebagian). v1: batalkan penjualan dan buat ulang. Kalau sering terjadi, perlu fitur retur per baris.

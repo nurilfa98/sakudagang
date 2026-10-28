@@ -30,6 +30,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLogout } from "@/features/auth/hooks/use-logout";
 import type { CurrentUser } from "@/lib/auth/dal";
+import { ROLE_LABELS } from "@/lib/auth/roles";
 
 // "Budi Santoso" → "BS"
 function getInitials(name: string) {
@@ -60,7 +61,7 @@ export function UserMenu({ user }: { user: Pick<CurrentUser, "fullName" | "email
           <DropdownMenuLabel className="flex flex-col gap-0.5">
             <span className="truncate text-sm font-medium text-foreground">{user.fullName}</span>
             <span className="truncate">{user.email}</span>
-            {user.roles.length > 0 && <span className="truncate">{user.roles.join(", ")}</span>}
+            {user.roles.length > 0 && <span className="truncate">{user.roles.map((role) => ROLE_LABELS[role]).join(", ")}</span>}
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />

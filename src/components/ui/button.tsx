@@ -8,7 +8,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/80",
-        // Warna aksen SakuSembako (indigo), dipakai sebagai varian BAWAAN semua
+        // Warna aksen SakuDagang (sky), dipakai sebagai varian BAWAAN semua
         // tombol utama (lihat defaultVariants). "default" (slate gelap) tetap
         // ada hanya bila perlu dipanggil eksplisit.
         brand: "bg-brand text-brand-foreground hover:bg-brand/85",
