@@ -3,6 +3,8 @@
 // Bukti, Tandai lunas, Tolak (alasan wajib), Batalkan. Saat masih PENDING
 // admin hanya menunggu, agar alur selalu lewat klaim + bukti dari pemilik.
 // Hanya "Tandai lunas" yang memperpanjang masa toko.
+// Tombol berupa ikon + tooltip agar tabel tidak melebar; warna: Tandai lunas
+// brand, Tolak oranye (variant edit, sama di dialog), Batalkan merah lembut.
 
 "use client";
 
@@ -20,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { confirmSubscriptionPaid, rejectSubscriptionClaim } from "@/features/subscriptions/actions";
 import { PLAN_LABELS } from "@/features/subscriptions/constants";
 import type { SubscriptionItem } from "@/features/subscriptions/queries";
@@ -68,19 +71,16 @@ export function BillingRowActions({ subscription }: { subscription: Subscription
   return (
     <div className="flex items-center justify-end gap-1">
       {subscription.proofType && (
-        <Button size="sm" variant="outline" onClick={() => open("proof")}>
+        <IconAction label="Lihat bukti transfer" variant="outline" onClick={() => open("proof")}>
           <FileSearchIcon />
-          Bukti
-        </Button>
+        </IconAction>
       )}
-      <Button size="sm" onClick={() => open("confirm")}>
+      <IconAction label="Tandai lunas" variant="brand" onClick={() => open("confirm")}>
         <CheckIcon />
-        Tandai lunas
-      </Button>
-      <Button size="sm" variant="edit" onClick={() => open("reject")}>
+      </IconAction>
+      <IconAction label="Tolak klaim" variant="edit" onClick={() => open("reject")}>
         <XIcon />
-        Tolak
-      </Button>
+      </IconAction>
       <CancelInvoiceButton subscriptionId={subscription.id} compact />
 
       {/* Pratinjau bukti transfer; dari sini admin bisa langsung tandai lunas / tolak. */}
@@ -97,7 +97,7 @@ export function BillingRowActions({ subscription }: { subscription: Subscription
           {subscription.proofType && <ProofPreview subscriptionId={subscription.id} type={subscription.proofType} mode="full" />}
           <AlertDialogFooter>
             <AlertDialogCancel>Tutup</AlertDialogCancel>
-            <Button variant="destructive" onClick={() => open("reject")}>
+            <Button variant="edit" onClick={() => open("reject")}>
               <XIcon />
               Tolak
             </Button>
@@ -141,7 +141,7 @@ export function BillingRowActions({ subscription }: { subscription: Subscription
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Batal</AlertDialogCancel>
             <Button
-              variant={dialog === "reject" ? "destructive" : "brand"}
+              variant={dialog === "reject" ? "edit" : "brand"}
               disabled={pending}
               onClick={dialog === "reject" ? handleReject : handleConfirm}
             >
@@ -152,5 +152,27 @@ export function BillingRowActions({ subscription }: { subscription: Subscription
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+// Tombol ikon kecil + tooltip (teks hanya untuk pembaca layar).
+function IconAction({
+  label,
+  variant,
+  onClick,
+  children,
+}: {
+  label: string;
+  variant: React.ComponentProps<typeof Button>["variant"];
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<Button size="icon-sm" variant={variant} onClick={onClick} aria-label={label} />}>
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }

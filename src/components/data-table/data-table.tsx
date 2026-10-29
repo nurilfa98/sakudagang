@@ -139,7 +139,9 @@ export function DataTable<TData extends RowData>({
   const to = Math.min(total, (pageIndex + 1) * pageSize);
 
   return (
-    <div className="flex flex-col gap-3">
+    // min-w-0: agar tabel lebar menggulir di dalam pembungkusnya, bukan
+    // melebarkan halaman (lihat juga app/(app)/layout.tsx).
+    <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative w-full sm:max-w-xs">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />

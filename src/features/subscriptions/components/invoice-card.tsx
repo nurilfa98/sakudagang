@@ -79,9 +79,9 @@ export function InvoiceCard({
               <div className="flex flex-col gap-2 pt-2">
                 <p className="flex items-center gap-2">
                   <FileCheckIcon className="size-4 text-muted-foreground" />
-                  Bukti transfer yang Anda kirim
+                  Bukti transfer yang Anda kirim (klik untuk memperbesar)
                 </p>
-                <ProofPreview subscriptionId={invoice.id} type={invoice.proofType} className="self-start" />
+                <ProofPreview subscriptionId={invoice.id} type={invoice.proofType} />
               </div>
             )}
           </div>

@@ -46,7 +46,10 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           </Suspense>
         }
       />
-      <SidebarInset>
+      {/* min-w-0: area konten adalah anak flex; tanpa ini tabel lebar memaksa
+          seluruh halaman melebar (scroll horizontal di browser). Dengan min-w-0,
+          scroll horizontal hanya muncul di pembungkus tabel (components/ui/table.tsx). */}
+      <SidebarInset className="min-w-0">
         <AppHeader
           storeIndicator={
             <Suspense>
@@ -59,7 +62,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
             </Suspense>
           }
         />
-        <div className="flex flex-1 flex-col gap-4 p-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-4 p-4">
           <Suspense>
             <HeaderSubscriptionBanner />
           </Suspense>

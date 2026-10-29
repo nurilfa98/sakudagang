@@ -128,7 +128,7 @@ function CreateForm({ stores, defaultStoreId, roleChoices, defaultRole, backHref
           label="Email"
           type="email"
           autoComplete="off"
-          description="Dipakai untuk login. Kredensial dikirim ke email ini, kecuali bagian sebelum @ sama dengan nama depan (email hanya syarat login, mis. khonita@gmail.com untuk Khonita Aulia)."
+          description="Dipakai untuk login. Kredensial dikirim ke email ini, kecuali bagian sebelum @ sama dengan nama depan (email hanya syarat login, mis. nita@gmail.com untuk Nita Aulia)."
           required
           error={fieldError("email")}
         />

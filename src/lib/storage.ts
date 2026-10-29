@@ -14,7 +14,7 @@
 // - https://github.com/mhart/aws4fetch
 
 import "server-only";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AwsClient } from "aws4fetch";
 import { env } from "@/lib/env";
@@ -86,6 +86,22 @@ export async function getPresignedUrl(key: string) {
 export async function readLocalObject(key: string) {
   assertLocalAllowed();
   return readFile(localPath(key));
+}
+
+// true bila objek masih ada. Dipakai sebelum menampilkan file yang boleh
+// dibersihkan manual dari bucket (misal bukti transfer lama), supaya aplikasi
+// bisa menampilkan pesan yang jelas alih-alih gambar rusak.
+export async function objectExists(key: string) {
+  if (r2) {
+    const response = await r2.client.fetch(objectUrl(key), { method: "HEAD" });
+    return response.ok;
+  }
+  try {
+    await access(localPath(key));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function objectUrl(key: string) {

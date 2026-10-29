@@ -34,12 +34,12 @@ export function assignableRolesFor(actor: Actor): AssignableRole[] {
 
 // "Email syarat login": pemilik/kasir yang tidak punya email tetap butuh email
 // untuk login, jadi admin mendaftarkan email buatan dari nama depannya, misal
-// nama "Nizam Alifa" → nizam@gmail.com. Email seperti ini dianggap tidak aktif:
+// nama "Nita Aulia" → nita@gmail.com. Email seperti ini dianggap tidak aktif:
 // kredensial TIDAK dikirim ke sana, cukup disampaikan lewat WhatsApp.
 //
 // Aturan: bagian email sebelum "@" sama dengan kata pertama nama lengkap
 // (tidak peka huruf besar/kecil, tanda baca diabaikan). Domain tidak dicek,
-// supaya nizam@yahoo.com juga dianggap sama.
+// supaya nita@yahoo.com juga dianggap sama.
 export function isPlaceholderEmail(fullName: string, email: string) {
   const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
   const localPart = normalize(email.split("@")[0] ?? "");

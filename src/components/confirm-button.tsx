@@ -23,6 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function ConfirmButton({
   label,
@@ -35,6 +36,7 @@ export function ConfirmButton({
   onConfirm,
   icon,
   ariaLabel,
+  tooltip,
 }: {
   label: string;
   variant: ComponentProps<typeof Button>["variant"];
@@ -47,6 +49,8 @@ export function ConfirmButton({
   // Tombol ikon saja: isi `icon` dan `ariaLabel`, kosongkan `label`.
   icon?: React.ReactNode;
   ariaLabel?: string;
+  // Teks tooltip (biasanya sama dengan ariaLabel) untuk tombol ikon di tabel.
+  tooltip?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -58,18 +62,29 @@ export function ConfirmButton({
     });
   }
 
+  const button = (
+    <Button
+      variant={variant}
+      size={size ?? (icon && !label ? "icon" : undefined)}
+      disabled={disabled}
+      onClick={() => setOpen(true)}
+      aria-label={ariaLabel}
+    >
+      {icon}
+      {label}
+    </Button>
+  );
+
   return (
     <>
-      <Button
-        variant={variant}
-        size={icon && !label ? "icon" : size}
-        disabled={disabled}
-        onClick={() => setOpen(true)}
-        aria-label={ariaLabel}
-      >
-        {icon}
-        {label}
-      </Button>
+      {tooltip ? (
+        <Tooltip>
+          <TooltipTrigger render={button} />
+          <TooltipContent>{tooltip}</TooltipContent>
+        </Tooltip>
+      ) : (
+        button
+      )}
       <AlertDialog open={open} onOpenChange={(next) => !pending && setOpen(next)}>
         <AlertDialogContent>
           <AlertDialogHeader>

@@ -349,7 +349,7 @@ Satu baris per tagihan/periode. Tidak pernah dihapus.
 | months | smallint | Periode paket. |
 | price | bigint | SNAPSHOT harga saat tagihan dibuat. |
 | status | varchar(20) | `PENDING` menunggu bayar, `CLAIMED` pemilik sudah klik "saya sudah bayar" + bukti (menunggu konfirmasi), `ACTIVE` lunas, `CANCELLED`. CHECK constraint. "Habis" dihitung dari `ends_at`. |
-| claimed_at, proof_key | timestamptz / varchar(255) null | Waktu klaim bayar & key bukti transfer di `lib/storage.ts` (dilayani `/api/subscriptions/[id]/proof`). |
+| claimed_at, proof_key | timestamptz / varchar(255) null | Waktu klaim bayar & key bukti transfer di `lib/storage.ts` (dilayani `/api/subscriptions/[id]/proof`). Key diawali folder bulan `YYYY-MM/bukti-transfer/…` agar bukti lama bisa dibersihkan manual per bulan dari bucket R2; bila berkas sudah tidak ada, UI menampilkan "Transaksi sudah selesai" dan `proof_key` tetap tersimpan sebagai jejak. |
 | rejected_at, rejection_note | timestamptz / varchar(255) null | Penolakan admin terakhir (alasan tampil ke pemilik); jejak bila ada perselisihan. |
 | starts_at, ends_at | timestamptz null | Diisi saat lunas: mulai dari `stores.subscription_until` bila masih di masa depan, kalau tidak dari waktu konfirmasi. |
 | paid_at | timestamptz null | Waktu ditandai lunas. |

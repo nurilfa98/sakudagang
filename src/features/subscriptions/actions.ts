@@ -22,6 +22,7 @@ import { verifySession } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
 import { stores, storePlanPrices, subscriptionPlans, subscriptions } from "@/lib/db/schema";
+import { zonedYearMonth } from "@/lib/dates";
 import { formatRupiah } from "@/lib/format";
 import { getPlatformSettings } from "@/lib/platform-settings";
 import { deleteObject, putObject } from "@/lib/storage";
@@ -241,7 +242,12 @@ export async function claimSubscriptionPaid(
   if (!invoice) return NOT_FOUND;
 
   const extension = file.type === "application/pdf" ? "pdf" : file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-  const key = `subscriptions/${storeId}/${invoice.id}-${crypto.randomUUID()}.${extension}`;
+  // Awalan "YYYY-MM/" = folder per bulan di bucket (R2 membuat "folder" dari
+  // awalan nama file), agar bukti transaksi lama mudah dibersihkan manual per
+  // bulan dari dashboard Cloudflare.
+  const { year, month } = zonedYearMonth(new Date());
+  const folder = `${year}-${String(month).padStart(2, "0")}`;
+  const key = `${folder}/bukti-transfer/${storeId}/${invoice.id}-${crypto.randomUUID()}.${extension}`;
   await putObject(key, new Uint8Array(await file.arrayBuffer()), file.type);
 
   const [row] = await db

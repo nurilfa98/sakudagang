@@ -2,12 +2,16 @@
 // Boleh dibuka oleh Superadmin dan Pemilik toko pemilik tagihan itu (toko
 // terkunci pun boleh, agar pemilik bisa melihat bukti yang ia kirim).
 // File privat di lib/storage.ts: R2 → presigned URL, lokal → isi file.
+// Bukti transaksi lama boleh dibersihkan manual dari bucket; bila objeknya
+// sudah tidak ada, route menjawab 404 dan UI menampilkan "Transaksi sudah
+// selesai" (features/subscriptions/components/proof-preview.tsx). Permintaan
+// HEAD dari UI dilayani Next.js lewat handler GET ini.
 
 import { NextResponse } from "next/server";
 import { getSubscriptionProof } from "@/features/subscriptions/queries";
 import { getCurrentUser } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
-import { getPresignedUrl, readLocalObject } from "@/lib/storage";
+import { getPresignedUrl, objectExists, readLocalObject } from "@/lib/storage";
 
 const CONTENT_TYPES: Record<string, string> = {
   png: "image/png",
@@ -26,6 +30,9 @@ export async function GET(_request: Request, { params }: RouteContext<"/api/subs
   const allowed =
     proof?.proofKey && (can(user, "subscription:manage") || (can(user, "subscription:view") && user.activeStore?.id === proof.storeId));
   if (!proof || !allowed || !proof.proofKey) return NextResponse.json({ error: "Tidak ditemukan" }, { status: 404 });
+  if (!(await objectExists(proof.proofKey))) {
+    return NextResponse.json({ error: "Berkas sudah dibersihkan" }, { status: 404 });
+  }
 
   const presigned = await getPresignedUrl(proof.proofKey);
   if (presigned) return NextResponse.redirect(presigned, { headers: { "Cache-Control": "private, no-store" } });

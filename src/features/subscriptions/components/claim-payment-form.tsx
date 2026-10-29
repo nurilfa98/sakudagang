@@ -34,19 +34,19 @@ export function ClaimPaymentForm({ subscriptionId }: { subscriptionId: string })
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="proof">Bukti transfer</FieldLabel>
-          {/* autoFocus: form unggah selalu langsung fokus ke input file (aturan UI
-              SakuDagang), agar pemilik tinggal memilih berkas. */}
+          {/* cursor-pointer: input berkas menampilkan kursor tangan (aturan UI
+              SakuDagang untuk semua input unggah), agar jelas bisa diklik. */}
           <Input
             id="proof"
             name="proof"
             type="file"
             accept="image/png,image/jpeg,image/webp,application/pdf"
             required
-            autoFocus
+            className="cursor-pointer file:cursor-pointer"
           />
           <FieldDescription>Foto/screenshot bukti transfer atau PDF, maksimal 3 MB. Wajib agar admin bisa mencocokkan.</FieldDescription>
         </Field>
-        <TextField name="note" label="Catatan (opsional)" placeholder="Transfer dari BCA a.n. Rosa, 29 Okt 14.10" autoComplete="off" />
+        <TextField name="note" label="Catatan (opsional)" placeholder="Transfer dari BCA a.n. Nita, 29 Okt 14.10" autoComplete="off" />
         <Field orientation="horizontal">
           <Button type="submit" disabled={pending}>
             {pending ? <LoaderCircleIcon className="animate-spin" /> : <CheckIcon />}
