@@ -96,6 +96,18 @@ export function endOfDayAfter(from: Date, days: number) {
   return new Date(midnight - 1);
 }
 
+// Rentang satu bulan (atau satu tahun bila `month` kosong) menurut zona
+// waktu perusahaan, sebagai [start, end) untuk filter kolom timestamp:
+//   where(gte(t.createdAt, start), lt(t.createdAt, end))
+export function zonedPeriodRange(year: number, month?: number) {
+  const startAsUtc = Date.UTC(year, month ? month - 1 : 0, 1);
+  const endAsUtc = month ? Date.UTC(year, month, 1) : Date.UTC(year + 1, 0, 1);
+  return {
+    start: new Date(startAsUtc - offsetMs(new Date(startAsUtc))),
+    end: new Date(endAsUtc - offsetMs(new Date(endAsUtc))),
+  };
+}
+
 const partsFormat = new Intl.DateTimeFormat("en-US", {
   timeZone,
   year: "numeric",

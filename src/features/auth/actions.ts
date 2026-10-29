@@ -25,6 +25,8 @@ import { getClientIp } from "@/lib/request";
 import type { ActionResult } from "@/types/action-result";
 import { findUserCredentials, findUserForLogin } from "./queries";
 import { checkLoginRateLimit, recordLoginAttempt } from "./rate-limit";
+import { getPlatformSettings } from "@/lib/platform-settings";
+import { getStoreAccess } from "@/lib/subscription-access";
 import { changePasswordSchema, loginSchema } from "./schemas";
 
 // Dipakai bersama useActionState di login-form.tsx. Karena itu parameter
@@ -71,6 +73,18 @@ export async function login(_prevState: ActionResult | undefined, formData: Form
   // Aman memberi tahu status akun di sini karena password sudah terbukti benar.
   if (!user.isActive) {
     return { success: false, message: "Akun Anda dinonaktifkan. Hubungi pemilik toko." };
+  }
+  // Status toko (BUSINESS-FLOW §2 & §14.3). Pemilik toko yang langganannya
+  // habis tetap boleh masuk: DAL membatasinya ke halaman Langganan.
+  if (user.storeIsActive === false) {
+    return { success: false, message: "Toko Anda dinonaktifkan. Hubungi admin SakuDagang." };
+  }
+  if (user.role === "CASHIER" && user.storeSubscriptionUntil) {
+    const { graceDays } = await getPlatformSettings();
+    const access = getStoreAccess({ subscriptionUntil: user.storeSubscriptionUntil, hasPaid: true, graceDays });
+    if (access.locked) {
+      return { success: false, message: "Masa berlangganan toko habis. Hubungi pemilik toko." };
+    }
   }
 
   // 4. Catat, lalu buat session (menulis cookie terenkripsi).

@@ -32,6 +32,8 @@ import {
   UserMenu,
   UserMenuSkeleton,
 } from "@/features/auth/components/user-menu";
+import { ActiveStoreIndicator } from "@/features/stores/components/active-store-indicator";
+import { SubscriptionBanner } from "@/features/subscriptions/components/subscription-banner";
 import { verifySession } from "@/lib/auth/dal";
 
 export default function AppLayout({ children }: LayoutProps<"/">) {
@@ -46,32 +48,62 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       />
       <SidebarInset>
         <AppHeader
+          storeIndicator={
+            <Suspense>
+              <HeaderStoreIndicator />
+            </Suspense>
+          }
           userMenu={
             <Suspense fallback={<UserMenuSkeleton />}>
               <HeaderUserMenu />
             </Suspense>
           }
         />
-        <div className="flex flex-1 flex-col gap-4 p-4">{children}</div>
+        <div className="flex flex-1 flex-col gap-4 p-4">
+          <Suspense>
+            <HeaderSubscriptionBanner />
+          </Suspense>
+          {children}
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );
 }
 
-// Dua komponen di bawah sama-sama memanggil verifySession(), tapi query ke
+// Komponen di bawah sama-sama memanggil verifySession(), tapi query ke
 // database hanya terjadi sekali per request berkat 'use cache: private' di DAL.
 // Kalau session tidak valid (misal user dinonaktifkan), user diarahkan ke /login.
+//
+// allowLocked: layout juga membungkus halaman Langganan, satu-satunya halaman
+// yang boleh dibuka Pemilik saat langganan toko habis (BUSINESS-FLOW §14.3).
+// Halaman lain tetap mengarahkan ke sana lewat verifySession() masing-masing.
 
 async function SidebarNav() {
-  const user = await verifySession();
-  return <NavMain roles={user.roles} />;
+  const user = await verifySession({ allowLocked: true });
+  return (
+    <NavMain
+      role={user.role}
+      activeStoreName={user.activeStore?.name ?? null}
+      storeLocked={user.role !== "SUPERADMIN" && user.activeStore?.access.locked === true}
+    />
+  );
+}
+
+async function HeaderStoreIndicator() {
+  const user = await verifySession({ allowLocked: true });
+  return <ActiveStoreIndicator user={user} />;
+}
+
+async function HeaderSubscriptionBanner() {
+  const user = await verifySession({ allowLocked: true });
+  return <SubscriptionBanner user={user} />;
 }
 
 async function HeaderUserMenu() {
-  const user = await verifySession();
+  const user = await verifySession({ allowLocked: true });
   return (
     <UserMenu
-      user={{ fullName: user.fullName, email: user.email, roles: user.roles }}
+      user={{ fullName: user.fullName, email: user.email, role: user.role }}
     />
   );
 }

@@ -1,7 +1,7 @@
 // SATU-SATUNYA tempat untuk mengatur "role apa boleh melakukan apa" (RBAC).
 //
 // Kode di halaman dan Server Action TIDAK mengecek role secara langsung
-// (`roles.includes("OWNER")`), melainkan mengecek permission:
+// (`user.role === "OWNER"`), melainkan mengecek permission:
 //
 //     await requirePermission("product:manage");   // di server (lib/auth/dal.ts)
 //     can(user, "product:view-cost")                // untuk menampilkan/menyembunyikan UI
@@ -39,12 +39,20 @@ export const PERMISSIONS = [
   "user:manage-owner", // buat/nonaktifkan Pemilik (hanya Superadmin)
   "store:manage", // buat/nonaktifkan toko (hanya Superadmin)
   "store:edit-own", // ubah data toko sendiri (nama, alamat, zona waktu)
+  "subscription:view", // melihat status langganan & memilih paket (Pemilik)
+  "subscription:manage", // konfirmasi bayar & batalkan tagihan (hanya Superadmin)
+  "settings:manage", // pengaturan platform: harga paket, rekening, harga khusus (hanya Superadmin)
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
 
 // Hanya untuk Superadmin: mengelola tenant & pemilik.
-const PLATFORM_PERMISSIONS: readonly Permission[] = ["user:manage-owner", "store:manage"];
+const PLATFORM_PERMISSIONS: readonly Permission[] = [
+  "user:manage-owner",
+  "store:manage",
+  "subscription:manage",
+  "settings:manage",
+];
 
 // `satisfies` memastikan setiap role terdaftar dan setiap permission valid.
 const ROLE_PERMISSIONS = {
@@ -53,7 +61,6 @@ const ROLE_PERMISSIONS = {
   CASHIER: ["sale:create", "sale:void-own", "credit:settle", "customer:manage", "product:view"],
 } satisfies Record<Role, readonly Permission[]>;
 
-// User dengan banyak role mendapat gabungan permission dari semua role-nya.
-export function can(user: { roles: readonly Role[] }, permission: Permission) {
-  return user.roles.some((role) => (ROLE_PERMISSIONS[role] as readonly Permission[]).includes(permission));
+export function can(user: { role: Role }, permission: Permission) {
+  return (ROLE_PERMISSIONS[user.role] as readonly Permission[]).includes(permission);
 }

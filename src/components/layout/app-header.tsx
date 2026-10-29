@@ -18,7 +18,9 @@ import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { PageBreadcrumb } from "./page-breadcrumb";
 
-export function AppHeader({ userMenu }: { userMenu: ReactNode }) {
+// `storeIndicator` (slot) = nama toko yang sedang dibuka; untuk Superadmin
+// berisi tombol ganti/keluar toko. Dibungkus <Suspense> oleh layout.
+export function AppHeader({ userMenu, storeIndicator }: { userMenu: ReactNode; storeIndicator: ReactNode }) {
   return (
     <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/60">
       <SidebarTrigger className="-ml-1" />
@@ -26,7 +28,8 @@ export function AppHeader({ userMenu }: { userMenu: ReactNode }) {
       <Suspense>
         <PageBreadcrumb />
       </Suspense>
-      <div className="ml-auto flex items-center gap-1">
+      <div className="ml-auto flex min-w-0 items-center gap-2">
+        {storeIndicator}
         <ThemeToggle />
         {userMenu}
       </div>

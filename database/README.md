@@ -49,11 +49,15 @@ Lokasi folder diatur di `drizzle.config.ts` (`out: "./database/migrations"`).
 
 - **Jangan mengubah, mengganti nama, atau menghapus migration yang sudah dijalankan** di database mana pun (terutama production). drizzle-kit mencatat migration yang sudah dijalankan di tabel `drizzle.__drizzle_migrations`; perubahan berikutnya selalu dibuat sebagai migration baru.
 - Jangan menyunting `meta/` secara manual. File di sana dibuat dan dibaca drizzle-kit.
-- Data awal yang wajib ada (roles, kategori) diisi lewat migration, sehingga database baru langsung siap setelah `pnpm db:migrate`.
+- Data awal yang wajib ada diisi lewat migration, sehingga database baru langsung siap setelah `pnpm db:migrate`. Data per toko (kategori) diisi saat toko dibuat, bukan migration.
 
 ## Riwayat migration
 
 | File | Isi |
 |---|---|
-| `0000_accounts` | Tabel `roles`, `users`, `user_roles`, `login_attempts`. *Manual:* isi roles SUPERADMIN, OWNER, CASHIER. |
+| `0000_quick_boomer` | Tabel `roles`, `users`, `user_roles`, `login_attempts`. Nama acak bawaan drizzle-kit, dibiarkan agar riwayat tidak berubah. |
 | `0001_stores` | Tabel `stores` (tenant) dan kolom `users.store_id` (null hanya untuk SUPERADMIN). |
+| `0002_seed_roles` | *Manual (custom):* isi `roles` SUPERADMIN, OWNER, CASHIER. Tidak relevan lagi setelah `0003`, dibiarkan karena sudah dijalankan. |
+| `0003_users_role_column` | Kolom `users.role` (varchar + CHECK) menggantikan tabel `roles` & `user_roles`. *Manual:* salin role lama ke kolom baru sebelum tabel lama dihapus. |
+| `0004_users_phone` | Kolom `users.phone` (nomor WhatsApp, format `62…`) untuk undangan login. |
+| `0005_products` | Tabel `product_categories`, `products`, `stock_movements`. *Manual:* kategori awal untuk toko yang sudah ada. |

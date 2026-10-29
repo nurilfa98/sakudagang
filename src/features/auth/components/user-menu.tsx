@@ -42,7 +42,7 @@ function getInitials(name: string) {
     .join("");
 }
 
-export function UserMenu({ user }: { user: Pick<CurrentUser, "fullName" | "email" | "roles"> }) {
+export function UserMenu({ user }: { user: Pick<CurrentUser, "fullName" | "email" | "role"> }) {
   const { isPending, logout } = useLogout();
 
   return (
@@ -61,7 +61,7 @@ export function UserMenu({ user }: { user: Pick<CurrentUser, "fullName" | "email
           <DropdownMenuLabel className="flex flex-col gap-0.5">
             <span className="truncate text-sm font-medium text-foreground">{user.fullName}</span>
             <span className="truncate">{user.email}</span>
-            {user.roles.length > 0 && <span className="truncate">{user.roles.map((role) => ROLE_LABELS[role]).join(", ")}</span>}
+            <span className="truncate">{ROLE_LABELS[user.role]}</span>
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />

@@ -9,7 +9,7 @@
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { stores, users } from "@/lib/db/schema";
 
 const credentialColumns = {
   id: users.id,
@@ -19,8 +19,20 @@ const credentialColumns = {
   sessionVersion: users.sessionVersion,
 };
 
+// Ikut membaca status toko agar login bisa memberi pesan yang jelas
+// (toko dinonaktifkan / langganan habis), lihat features/auth/actions.ts.
 export async function findUserForLogin(email: string) {
-  const [user] = await db.select(credentialColumns).from(users).where(eq(users.email, email)).limit(1);
+  const [user] = await db
+    .select({
+      ...credentialColumns,
+      role: users.role,
+      storeIsActive: stores.isActive,
+      storeSubscriptionUntil: stores.subscriptionUntil,
+    })
+    .from(users)
+    .leftJoin(stores, eq(users.storeId, stores.id))
+    .where(eq(users.email, email))
+    .limit(1);
 
   return user;
 }

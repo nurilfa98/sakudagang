@@ -148,6 +148,33 @@ DTO penting di sini karena **Kasir tidak boleh melihat harga modal**: query
 untuk layar kasir tidak boleh mengembalikan kolom `cost_price` sama sekali,
 bukan sekadar disembunyikan di UI.
 
+### Daftar data: paket standar data table
+
+Setiap halaman daftar memakai satu paket yang sama (disalin dari archipay,
+`src/components/data-table/`), sehingga fitur baru tinggal mengikuti pola:
+
+| Bagian | File | Isi |
+|---|---|---|
+| Skema filter | `features/<fitur>/schemas.ts` | `parse<Fitur>Filters(searchParams)` dengan zod: nilai URL tidak valid diabaikan, bukan error. Helper umum (`firstParam`, tahun, bulan, enum) di `lib/filters.ts`. |
+| Query | `features/<fitur>/queries.ts` | `list<Fitur>({ storeId, ...filters, limit })` menerapkan filter di SQL; `list<Fitur>FilterOptions()` untuk pilihan dropdown (tahun yang ada data, kategori, dst). |
+| Tabel | `features/<fitur>/components/<fitur>-table.tsx` | Client Component. Kolom dibuat **di luar komponen** (`createDataTableColumns`), `DataTable` dengan `searchableColumns`, panel `DataTableFilters` + `DataTableFilterSelect`, nilai filter lewat `useUrlFilters()`. |
+| Halaman | `app/(app)/<fitur>/page.tsx` | `searchParams` di-await di dalam `<Suspense>`, hasil parse diteruskan ke query dan ke tabel (`filters` + `activeFilterCount`). |
+
+Pembagian kerja: **pencarian, urutan, dan halaman** (10 baris) berjalan di
+browser atas data yang dimuat (batas 500 baris per query); **filter** (status,
+bulan, kategori, …) disimpan di URL dan diterapkan server, jadi ikut tersimpan
+saat refresh/bookmark. Bila satu daftar melewati ribuan baris, pindahkan
+pencarian & halaman ke server (`manualPagination`) tanpa mengubah tampilan.
+
+Penerapan ke tabel yang sudah ada:
+
+| Tabel | Pencarian | Filter (URL) |
+|---|---|---|
+| Barang (`/products`) | nama, kategori | kategori, status aktif/nonaktif, stok menipis |
+| Pengguna (`/users`) | nama, email, WhatsApp | toko (Superadmin), role, status |
+| Toko (`/stores`) | nama, pemilik | status, jenis usaha, status langganan (nanti) |
+| Mutasi stok (`/products/[id]`) | catatan | jenis mutasi, bulan |
+
 ### Mengubah data (Server Action)
 
 ```

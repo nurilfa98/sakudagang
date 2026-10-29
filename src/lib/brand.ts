@@ -3,7 +3,7 @@
 
 export const PRODUCT_NAME = "SakuDagang";
 export const PRODUCT_TAGLINE = "Kasir, stok & laba toko";
-export const COMPANY_NAME = "Nama Perusahaan";
+export const COMPANY_NAME = "Realitech Solutions";
 
 // Ditulis manual agar halaman login tetap bisa diprerender. Perbarui tiap tahun.
 export const COPYRIGHT_YEAR = 2026;

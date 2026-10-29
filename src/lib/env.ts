@@ -25,6 +25,14 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   // Alamat aplikasi, dipakai untuk membuat link absolut (misal di email/notifikasi).
   NEXT_PUBLIC_APP_URL: z.url("NEXT_PUBLIC_APP_URL harus URL lengkap").default("http://localhost:3000"),
+  // Email via Resend (kredensial login pengguna baru / reset password). Sengaja
+  // opsional: saat development tanpa API key, email hanya ditampilkan di
+  // terminal (lihat lib/email.ts), dan `pnpm build` tidak gagal tanpa key.
+  RESEND_API_KEY: optional(z.string().startsWith("re_", "RESEND_API_KEY harus diawali re_")),
+  EMAIL_FROM: optional(z.string()),
+  // WhatsApp via Fonnte (undangan login). Opsional dengan alasan yang sama
+  // seperti email: tanpa token, pesan hanya ditampilkan di terminal (lib/whatsapp.ts).
+  FONNTE_TOKEN: optional(z.string()),
   // Zona waktu untuk menghitung "hari kalender" dan menampilkan tanggal (lib/dates.ts).
   // Asia/Jakarta (WIB), Asia/Makassar (WITA), Asia/Jayapura (WIT).
   APP_TIMEZONE: z

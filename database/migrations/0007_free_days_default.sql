@@ -1,0 +1,1 @@
+ALTER TABLE "platform_settings" ALTER COLUMN "free_days" SET DEFAULT 14;

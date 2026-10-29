@@ -13,16 +13,15 @@ Konvensi (lihat [ARCHITECTURE.md](./ARCHITECTURE.md) §1 & §5):
 - **Multi-tenant:** semua tabel di §2–§7 punya `store_id` → `stores.id` (NOT NULL) sebagai kolom kedua setelah `id`, dan setiap index pencarian diawali `store_id`. Tidak ditulis ulang di tiap tabel di bawah agar ringkas. Unique constraint yang disebut "unique" berlaku **per toko**: `(store_id, name)`, `(store_id, number)`, dst.
 - Status/enum disimpan `varchar` dengan daftar nilai di `features/*/constants.ts` (bukan enum PostgreSQL, agar menambah nilai tidak butuh migration).
 
-Status: **§0 dan §1 sudah ada di migration `0000_accounts` dan `0001_stores`; sisanya draf.**
+Status: **§0, §1, dan §2 sudah diimplementasi (migration `0000`–`0005`); §3–§7 masih draf.**
 
 ---
 
 ## Peta tabel
 
 ```
-stores ──< users ─────┐
-          roles ─────┴── user_roles
-          login_attempts
+stores ──< users
+login_attempts
 
 product_categories ──< products >──< stock_movements
                          │
@@ -50,8 +49,10 @@ product_categories ──< products >──< stock_movements
 | is_active | boolean default true | Nonaktif = semua user toko tidak bisa login (langganan berhenti). |
 | created_at, updated_at | | |
 
-Dibuat dan dinonaktifkan oleh Superadmin. Kolom langganan (`plan`,
-`subscription_until`) ditambahkan nanti saat billing dibuat.
+Dibuat dan dinonaktifkan oleh Superadmin. Langganan (v2) tidak disimpan di
+tabel ini melainkan di tabel `plans` dan `subscriptions` (satu baris per
+periode bayar), lihat BUSINESS-FLOW §14; `is_active` tetap menjadi saklar
+tunggal yang dibaca saat login.
 
 ## 1. Akun
 
@@ -61,18 +62,19 @@ Dibuat dan dinonaktifkan oleh Superadmin. Kolom langganan (`plan`,
 |---|---|---|
 | id | varchar(36) PK | |
 | store_id | FK → stores null | Toko tempat user bekerja. **Null hanya untuk SUPERADMIN.** OWNER/CASHIER wajib terisi (dicek di action). Index. |
+| role | varchar(20) | `SUPERADMIN`, `OWNER`, `CASHIER`. CHECK constraint; daftar nilai di `lib/auth/roles.ts`. |
 | full_name | varchar(100) | |
 | email | varchar(100) unique | Untuk login. |
+| phone | varchar(20) null | Nomor WhatsApp format `62…` (`lib/phone.ts`), untuk mengirim undangan login via tautan click-to-chat. |
 | password_hash | varchar(255) | bcrypt. |
 | is_active | boolean default true | Nonaktif = tidak bisa login. |
 | must_change_password | boolean default true | Password sementara dari pembuat akun. |
 | session_version | integer default 1 | Dinaikkan saat ganti/reset password → semua perangkat logout. |
 | created_at, updated_at | timestamptz | |
 
-### `roles`, `user_roles`
+Satu user satu role; Owner tidak perlu role CASHIER karena haknya sudah mencakup. Email unik **global** (bukan per toko) karena email adalah identitas login.
 
-`roles`: `id`, `name` unique (`SUPERADMIN`, `OWNER`, `CASHIER`), `created_at`. Diisi migration.
-`user_roles`: `user_id`, `role_id` (PK gabungan). Satu user satu role; Owner tidak perlu role CASHIER karena haknya sudah mencakup. Email unik **global** (bukan per toko) karena email adalah identitas login.
+**Kenapa `role` kolom varchar, bukan tabel `roles` + `user_roles`?** Template awal (ArchiPay) memakai many-to-many karena satu orang bisa merangkap dua role. SakuDagang tidak butuh itu, jadi disederhanakan (migration `0003_users_role_column`): tanpa join, tanpa seed data, dan konsisten dengan kolom status lain yang disimpan varchar dengan daftar nilai di `constants`. Kalau v2 butuh satu akun untuk banyak toko, bentuknya adalah `store_members (user_id, store_id, role)`, bukan `user_roles`.
 
 Akun SUPERADMIN **tidak punya kolom khusus** di `users`; "tersembunyi"
 diterapkan di query (`features/users/queries.ts` selalu mengecualikan user
@@ -309,6 +311,61 @@ PK gabungan `(store_id, prefix, period_year, period_month)`: nomor berjalan per 
 
 ---
 
+## 7b. Langganan & pengaturan platform (BUSINESS-FLOW §14)
+
+Sudah diimplementasi (migration `0006_subscriptions.sql`, 28 Okt 2026).
+
+### `platform_settings`
+
+Satu baris, `id = 'default'`, dibuat oleh migration. Diubah Superadmin di menu Pengaturan.
+
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| admin_phone | varchar(20) null | WhatsApp admin SakuDagang (62…), tujuan konfirmasi bayar. |
+| bank_name, bank_account_number, bank_account_name | varchar null | Rekening transfer manual. |
+| qris_image_key | varchar(255) null | Key gambar QRIS statis di `lib/storage.ts`; dilayani `/api/qris`. |
+| free_days | integer default 14 | Masa gratis toko baru. |
+| grace_days | integer default 3 | Masa tenggang setelah jatuh tempo. |
+
+### `subscription_plans`
+
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| months | smallint unique | 1, 6, 12 (seed migration). |
+| price | bigint default 0 | Harga TOTAL per periode; 0 = belum diatur, paket tidak bisa dipilih. |
+
+### `store_plan_prices`
+
+Harga khusus per toko (negosiasi). Unique (`store_id`, `months`). Kolom `price`,
+`note`. Bila ada, menggantikan harga standar untuk toko itu.
+
+### `subscriptions`
+
+Satu baris per tagihan/periode. Tidak pernah dihapus.
+
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| store_id | FK stores | |
+| months | smallint | Periode paket. |
+| price | bigint | SNAPSHOT harga saat tagihan dibuat. |
+| status | varchar(20) | `PENDING` menunggu bayar, `ACTIVE` lunas, `CANCELLED`. CHECK constraint. "Habis" dihitung dari `ends_at`. |
+| starts_at, ends_at | timestamptz null | Diisi saat lunas: mulai dari `stores.subscription_until` bila masih di masa depan, kalau tidak dari waktu konfirmasi. |
+| paid_at | timestamptz null | Waktu ditandai lunas. |
+| note | varchar(255) null | Referensi transfer / keterangan admin. |
+| created_by_id, confirmed_by_id | FK users | Pembuat (Pemilik/Superadmin) dan yang mengonfirmasi (Superadmin). |
+
+### `stores.subscription_until`, `stores.last_reminder_key`
+
+`last_reminder_key` (varchar(20) null) = pengingat WhatsApp terakhir yang
+sudah dikirim, format `<YYYY-MM-DD berakhir>:<H->`, agar cron harian tidak
+mengirim dobel (`features/subscriptions/reminders.ts`).
+
+Kolom tambahan di `stores`: akhir masa gratis/langganan. Diisi saat toko dibuat
+(`now + free_days`) dan setiap tagihan lunas (di dalam transaksi dengan baris
+toko dikunci). Dibaca `lib/auth/dal.ts` di setiap request: lewat
+`subscription_until + grace_days` → toko terkunci (Pemilik hanya halaman
+Langganan, Kasir tidak bisa login). Logika di `lib/subscription-access.ts`.
+
 ## 8. Query laporan (bukan tabel)
 
 Semua angka laporan dihitung saat diminta dari tabel di atas, difilter
@@ -336,7 +393,7 @@ Bila nanti laporan tahunan terasa lambat (ratusan ribu baris), index
 
 ## 9. Data awal (migration pertama)
 
-- `roles`: SUPERADMIN, OWNER, CASHIER (migration `0000_accounts`).
+- Tidak ada seed role: `users.role` adalah varchar dengan CHECK constraint.
 - Akun Superadmin: lewat `pnpm db:create-superadmin <email> <password> "<Nama>"`, bukan migration.
 - Per toko, diisi oleh action "buat toko" (`features/stores/actions.ts`), bukan migration:
   - `product_categories`: Sembako, Minuman, Makanan ringan, Rokok, Kebutuhan rumah, Lainnya.

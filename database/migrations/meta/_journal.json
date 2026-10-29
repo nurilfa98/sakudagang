@@ -15,6 +15,55 @@
       "when": 1793167208370,
       "tag": "0001_stores",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793169206309,
+      "tag": "0002_seed_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793170633740,
+      "tag": "0003_users_role_column",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793173032728,
+      "tag": "0004_users_phone",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793175461877,
+      "tag": "0005_products",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793181474906,
+      "tag": "0006_subscriptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793244565634,
+      "tag": "0007_free_days_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793246069724,
+      "tag": "0008_stores_last_reminder_key",
+      "breakpoints": true
     }
   ]
 }

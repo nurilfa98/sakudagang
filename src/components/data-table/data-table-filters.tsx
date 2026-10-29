@@ -6,7 +6,7 @@
 // Keuntungannya: filter ikut tersimpan saat halaman di-refresh/di-bookmark,
 // dan tombol Back mengembalikan filter sebelumnya.
 //
-// Contoh pemakaian (lihat pola di features/example/components):
+// Contoh pemakaian (lihat pola di features/users/components):
 //
 //   const { setFilters, pending } = useUrlFilters();
 //   <DataTable

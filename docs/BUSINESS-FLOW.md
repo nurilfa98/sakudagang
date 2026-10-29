@@ -22,6 +22,8 @@ kode jadi, tabel "sumber kebenaran" di bawah diisi dengan nama file-nya.
 | Aturan | File (rencana) |
 |---|---|
 | Hak akses per peran | `src/lib/auth/permissions.ts` |
+| Masa gratis, tenggang, kunci akses toko (§14) | `src/lib/subscription-access.ts`, `src/lib/auth/dal.ts` |
+| Harga paket, perpanjangan periode (§14) | `src/features/subscriptions/service.ts`, `src/features/subscriptions/actions.ts` |
 | Rumus harga modal rata-rata, laba | `src/features/products/service.ts`, `src/features/sales/service.ts` |
 | Daftar & arti status | `src/features/*/constants.ts` |
 | Rumus laporan | `src/features/reports/service.ts` |
@@ -81,10 +83,63 @@ Tiga peran: **Superadmin**, **Pemilik**, dan **Kasir**.
 | Toko: buat, ubah data, nonaktifkan (langganan berhenti) | ✓ | ubah data toko sendiri | |
 | Melihat & mengelola akun Superadmin | script saja | | |
 
-Superadmin punya semua permission, tetapi karena tidak terikat toko ia
-**tidak bisa bertransaksi** (layar kasir, pembelian, dll. menolak user tanpa
-toko). Untuk membantu Pemilik yang mengeluh, Superadmin membuka halaman toko
-tersebut dalam mode **lihat saja** (v1.1; di v1 cukup lewat database).
+### 2.1 Hierarki: Superadmin → Toko → Pemilik → Kasir
+
+SakuDagang dijual sebagai SaaS. **Klien** SakuDagang adalah **toko**; Superadmin
+adalah pengelola klien, bukan bagian dari toko mana pun.
+
+```
+Superadmin (platform SakuDagang)
+└── Toko A (klien, langganan)
+    ├── Pemilik  — mengelola toko, membuat Kasir
+    │   └── Kasir — mencatat penjualan
+    └── Pemilik lain (bila ada; dibuat Superadmin)
+└── Toko B …
+```
+
+Aturan turunan dari hierarki ini:
+
+| Lapisan | Siapa | Apa yang dilihat & dikelola |
+|---|---|---|
+| Platform | Superadmin | Semua toko, semua Pemilik/Kasir, status langganan (v2). |
+| Toko | Pemilik | Hanya data tokonya: barang, transaksi, laporan, Kasir. |
+| Toko | Kasir | Hanya layar kasir & barang tokonya, tanpa harga modal. |
+
+**Beranda Superadmin** (beranda platform), dari atas ke bawah:
+
+1. Kotak ringkasan klien, bentuknya sama dengan kotak dana Pemilik tetapi
+   berikon toko: **Toko aktif** (dari total toko; peringatan bila ada toko
+   tanpa pemilik), **Toko nonaktif** (langganan berhenti), **Pengguna toko**
+   (jumlah Pemilik + Kasir seluruh toko).
+2. **Kartu per toko**: nama, jenis usaha, status aktif/nonaktif, pemilik,
+   jumlah pengguna, jumlah barang aktif, tanggal bergabung, dan tombol
+   **menu toko itu** (Barang, Pengguna, nanti Kasir/Pembelian/Laporan) serta
+   "Data toko". Daftar tombol mengikuti menu sidebar bertanda `scope: "store"`
+   di `src/components/layout/nav-config.ts`, jadi fitur baru otomatis muncul.
+
+Menekan tombol menu membuat toko itu menjadi **toko aktif** (disimpan di
+cookie, ditampilkan di navbar dengan tombol Ganti/Keluar) dan langsung
+membuka menu tersebut. Selama toko aktif dipilih, semua menu bekerja persis
+seperti untuk Pemilik toko itu, termasuk mencatat transaksi (tercatat atas
+nama Superadmin). Pemilik/Kasir tidak punya pilihan toko: toko aktifnya
+selalu tokonya sendiri.
+
+**Sidebar Superadmin** mengikuti hierarki yang sama:
+
+- Grup **Platform** selalu tampil: Beranda, Toko (daftar semua toko),
+  Pengguna (semua toko, atau terfilter ke toko aktif).
+- Grup **Toko: <nama toko>** hanya tampil setelah masuk ke sebuah toko, berisi
+  menu operasional toko (Barang, nanti Kasir/Pembelian/Laporan). Tanpa toko
+  aktif menu ini disembunyikan karena halamannya memang mengarahkan kembali
+  ke beranda (`requireStore()`).
+
+Sidebar Pemilik/Kasir tidak berubah (grup Utama, Master Data, Administrasi),
+difilter sesuai permission.
+
+Rencana v2: **langganan per toko** (periode 1 / 3 / 12 bulan, diskon),
+dikelola Superadmin dari halaman toko; lihat §14. Di v1 status toko
+aktif/nonaktif diatur Superadmin secara manual dan berfungsi sebagai
+"langganan berjalan/berhenti".
 
 Alasan Kasir tidak melihat harga modal: margin warung adalah informasi pemilik.
 Layar kasir hanya menampilkan harga jual.
@@ -389,6 +444,7 @@ yang perlu ditagih.
 - **Pemilik** bisa mengubah data tokonya sendiri (nama, alamat, telepon, zona waktu), tetapi tidak bisa membuat toko lain.
 - **Pemilik** membuat akun **Kasir**: nama, email, password sementara. Pemilik bisa menonaktifkan Kasir (tidak bisa login, riwayat transaksinya tetap) dan mereset password.
 - Semua akun baru wajib mengganti password saat login pertama.
+- **Pengiriman kredensial.** Password sementara selalu ditampilkan sekali ke pembuat akun, dengan tombol **Kirim undangan via WhatsApp** (otomatis lewat Fonnte ke nomor WhatsApp pengguna; pesan berisi alamat aplikasi, email, password sementara). Tombol hanya berlaku selama pengguna belum mengganti password sementaranya. Selain itu dikirim ke email pengguna, **kecuali** emailnya adalah *email syarat login*: pemilik/kasir yang tidak punya email didaftarkan dengan email buatan dari nama depannya (nama "Nizam Alifa" → `nizam@gmail.com`). Aturan deteksi: bagian sebelum `@` sama dengan kata pertama nama lengkap (tidak peka huruf besar/kecil, tanda baca diabaikan, domain tidak dicek). Email seperti itu dianggap tidak aktif dan tidak dikirimi apa pun. Berlaku juga untuk reset password.
 - Akun Superadmin tidak pernah tampil di daftar pengguna.
 - Login dibatasi (rate limit) untuk mencegah tebak password. Sesi "Ingat saya" 14 hari, tanpa itu 12 jam.
 - Setiap transaksi (penjualan, pembelian, pembatalan, opname, pengeluaran) menyimpan siapa pelakunya.
@@ -424,3 +480,121 @@ Hal yang belum diputuskan; tidak menghalangi v1 tetapi perlu jawaban sebelum fit
 4. **Pembatalan pembelian setelah barang terjual.** v1 ditolak; pemilik diarahkan ke opname. Apakah cukup?
 5. **Retur barang dari pelanggan** (beli lalu kembalikan sebagian). v1: batalkan penjualan dan buat ulang. Kalau sering terjadi, perlu fitur retur per baris.
 6. **Kedaluwarsa.** Tanggal kedaluwarsa per batch tidak dicatat (butuh FIFO per batch). Penyusutan karena kedaluwarsa cukup lewat opname.
+
+---
+
+## 14. Langganan
+
+Status: **disepakati 28 Oktober 2026, diimplementasi 29 Oktober 2026** (menu
+Langganan per toko, Tagihan & Pengaturan untuk Superadmin, pembayaran manual +
+QRIS statis). Pengingat WhatsApp dan QRIS dinamis belum.
+
+### 14.1 Aturan dasar
+
+- **Masa gratis untuk semua toko baru**, lamanya diatur Superadmin di
+  Pengaturan (saat ini **14 hari**) sejak toko dibuat. Tidak ada fitur
+  "langganan gratis/bonus" terpisah (dihapus 29 Okt 2026).
+- **Masa tenggang 3 hari** setelah jatuh tempo: toko masih bisa dipakai
+  dengan spanduk peringatan. Lewat itu, akses ditutup (§14.3).
+- **Menu "Langganan"** ada di setiap toko, **paling bawah** sidebar,
+  berisi status langganan, pilihan paket, dan riwayat tagihan.
+- **Harga paket** per 1 bulan, 6 bulan, dan 12 bulan diatur Superadmin di
+  menu **Pengaturan** (platform), bukan di kode. Yang disimpan adalah
+  **harga total per periode**; aplikasi menghitung sendiri "setara Rp x/bulan,
+  hemat y %" dibanding paket bulanan.
+- **Harga khusus per toko** (hasil negosiasi tatap muka) juga diatur di
+  Pengaturan; bila ada, harga khusus menggantikan harga standar untuk toko itu.
+
+### 14.2 Alur berlangganan
+
+1. Pemilik membuka menu Langganan: tampil status (gratis s.d. tanggal,
+   aktif s.d. tanggal, tenggang, atau habis) dan tiga kartu paket beserta
+   harga yang berlaku untuk tokonya.
+2. Pemilik memilih paket → tercatat **tagihan** berstatus `PENDING` dan tampil
+   cara bayar: transfer ke rekening SakuDagang dan/atau QRIS statis (gambar
+   QR diunggah Superadmin di Pengaturan) + tombol "Konfirmasi via WhatsApp"
+   ke admin. Hanya boleh ada satu tagihan `PENDING` per toko; Pemilik bisa
+   membatalkannya.
+3. Superadmin melihat tagihan `PENDING` di beranda platform & menu Tagihan,
+   mencocokkan mutasi rekening, lalu menandai **lunas** → status `ACTIVE`,
+   masa berlangganan toko diperpanjang. Superadmin juga bisa **membuat
+   tagihan atas nama toko** dari halaman detail toko (pemilik membayar
+   tunai/transfer saat kunjungan), dengan opsi langsung tandai lunas.
+4. **Perpanjangan** dihitung dari tanggal berakhir yang sedang berjalan bila
+   masih di masa depan; bila sudah habis, dari tanggal konfirmasi lunas.
+   Toko yang membayar lebih awal tidak dirugikan.
+5. Pembayaran otomatis (QRIS dinamis / VA lewat payment gateway) = tahap
+   berikutnya; lihat §14.7.
+
+### 14.3 Saat akses ditutup (login terbatas)
+
+Setelah masa tenggang lewat (`subscription_until` + masa tenggang, saat ini
+3 hari, < sekarang):
+
+- **Pemilik masih bisa login**; semua menu tetap tampil (dengan ikon gembok),
+  tetapi hanya **Langganan** yang bisa dibuka. Mengklik menu lain membuka
+  halaman Langganan dengan pesan "Menu Barang belum bisa dibuka, pilih paket
+  dan lakukan pembayaran". Setelah lunas dikonfirmasi admin, semua menu
+  terbuka lagi dan masa aktif dihitung dari tanggal lunas.
+- **Kasir tidak bisa login**: layar login menampilkan "Masa berlangganan toko
+  habis, hubungi pemilik toko".
+- Superadmin tetap bisa masuk ke toko itu seperti biasa.
+
+Pengecekan dilakukan saat login & setiap request (`lib/auth/dal.ts`) dari
+kolom `stores.subscription_until`, jadi **tidak perlu job harian**.
+`stores.is_active` tetap ada sebagai saklar manual Superadmin (toko
+bermasalah) dan terpisah dari langganan: toko nonaktif = semua user tidak
+bisa masuk, apa pun status langganannya.
+
+### 14.4 Pengingat & tampilan
+
+- Spanduk di dalam aplikasi untuk Pemilik mulai **H-7** sebelum masa gratis
+  atau langganan habis, dan selama masa tenggang (merah).
+- Beranda Superadmin: kotak **"Akan habis ≤ 7 hari"** dan **"Tagihan menunggu
+  konfirmasi"**; kartu toko menampilkan "Gratis s.d. …" / "Aktif s.d. …" /
+  "Tenggang s.d. …" / "Habis sejak …".
+- Navbar menampilkan masa aktif toko sejak hari pertama ("Gratis s.d. 12 Nov").
+- Pengingat WhatsApp ke semua Pemilik toko **H-3 dan H-1** sebelum masa
+  berakhir, dikirim cron harian `/api/cron/subscription-reminders`
+  (`features/subscriptions/reminders.ts`); `stores.last_reminder_key`
+  mencegah kiriman dobel.
+
+### 14.5 Data
+
+| Tabel | Isi |
+|---|---|
+| `subscription_plans` | Paket standar: `months` (1/6/12), `price`, `is_active`. Diubah di Pengaturan. |
+| `store_plan_prices` | Harga khusus per toko: `store_id`, `months`, `price`, `note` ("negosiasi 12 Nov 2026"). |
+| `subscriptions` | Satu baris per periode bayar: `store_id`, `months`, `price` (snapshot), `starts_at`, `ends_at`, `status` (PENDING/ACTIVE/CANCELLED), `paid_at`, `payment_note`, `confirmed_by_id`, `created_by_id`. |
+| `platform_settings` | Satu baris: nomor WA admin, rekening pembayaran (bank, nomor, atas nama), gambar QRIS statis, masa gratis (hari, 28), masa tenggang (hari, 3). |
+| `stores` (+kolom) | `subscription_until` (timestamp): akhir masa gratis/langganan; diisi saat toko dibuat (= created_at + masa gratis) dan setiap tagihan lunas. |
+
+Harga di `subscriptions` adalah **snapshot**: mengubah harga paket/harga
+khusus tidak mengubah tagihan yang sudah dibuat. Status `EXPIRED` tidak
+disimpan: "habis" dihitung dari `ends_at` vs sekarang.
+
+### 14.6 Status langganan toko (turunan, dihitung di `features/subscriptions/service.ts`)
+
+| Status | Syarat | Akibat |
+|---|---|---|
+| TRIAL | belum pernah ada tagihan lunas, `subscription_until` ≥ sekarang | normal, spanduk H-7 |
+| ACTIVE | ada tagihan lunas, `subscription_until` ≥ sekarang | normal, spanduk H-7 |
+| GRACE | `subscription_until` < sekarang ≤ `subscription_until` + 3 hari | normal, spanduk merah |
+| EXPIRED | lewat masa tenggang | login terbatas (§14.3) |
+
+### 14.7 QRIS otomatis (tahap berikutnya)
+
+Dua jenis QRIS:
+
+- **QRIS statis** (dipakai tahap pertama): satu gambar QR tetap milik merchant
+  SakuDagang, nominal diketik pembayar. Tidak ada pemberitahuan ke aplikasi;
+  Superadmin mencocokkan manual. Persiapan: daftar merchant QRIS di bank atau
+  e-wallet bisnis, unggah gambar QR di Pengaturan.
+- **QRIS dinamis** lewat payment gateway (Midtrans, Xendit, Doku, dll.):
+  aplikasi membuat tagihan ke gateway, gateway mengembalikan QR berisi nominal
+  pasti, pembayar memindai, gateway memanggil **webhook** aplikasi
+  (`app/api/payments/webhook/route.ts`) → tagihan otomatis `ACTIVE` tanpa
+  campur tangan Superadmin. Persiapan: akun merchant gateway (KTP/NPWP, data
+  usaha, rekening settlement), domain HTTPS publik untuk webhook, kunci API
+  di env, pengujian di sandbox. Biaya MDR QRIS dipotong per transaksi,
+  dana masuk ke rekening T+1 s.d. T+2.

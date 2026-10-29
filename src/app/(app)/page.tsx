@@ -4,18 +4,36 @@
 // Polanya sama dengan halaman lain: judul statis di luar <Suspense>, bagian
 // yang membaca user & database di dalamnya.
 //
-// Untuk sekarang isinya PRATINJAU dashboard pemisahan dana
-// (docs/BUSINESS-FLOW.md §10.4) dengan angka nol, agar tata letak dan warna
-// bisa dilihat sebelum fitur penjualan ada. Angka sungguhan menyusul dari
-// features/reports/queries.ts.
+// Isi beranda mengikuti hierarki Superadmin → Toko → Pemilik → Kasir
+// (docs/BUSINESS-FLOW.md §2):
+// - Superadmin : beranda PLATFORM. Kotak ringkasan klien (jumlah toko aktif,
+//   nonaktif, pengguna) lalu kartu per toko dengan tombol masuk ke menu toko.
+// - Pemilik    : PRATINJAU dashboard pemisahan dana (§10.4) dengan angka nol,
+//   agar tata letak dan warna bisa dilihat sebelum fitur penjualan ada. Angka
+//   sungguhan menyusul dari features/reports/queries.ts.
+// - Kasir      : ringkasan transaksinya hari ini.
 
-import { BanknoteIcon, HandCoinsIcon, PiggyBankIcon } from "lucide-react";
+import {
+  BanknoteIcon,
+  ClockAlertIcon,
+  HandCoinsIcon,
+  PiggyBankIcon,
+  PlusIcon,
+  ReceiptIcon,
+  StoreIcon,
+  UsersIcon,
+} from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { ToneBadge } from "@/components/tone-badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StoreCards } from "@/features/stores/components/store-cards";
+import { listStores, summarizeStores, type StoreSummary } from "@/features/stores/queries";
+import { countPendingSubscriptions } from "@/features/subscriptions/queries";
 import { verifySession } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { ROLE_LABELS } from "@/lib/auth/roles";
@@ -28,7 +46,7 @@ export const metadata: Metadata = {
 export default function HomePage() {
   return (
     <>
-      <PageHeader title="Beranda" description="Ringkasan toko bulan ini." />
+      <PageHeader title="Beranda" />
       <Suspense fallback={<HomeSkeleton />}>
         <HomeContent />
       </Suspense>
@@ -39,14 +57,92 @@ export default function HomePage() {
 async function HomeContent() {
   const user = await verifySession();
 
+  // Superadmin: beranda platform = ringkasan klien + kartu per toko.
+  if (can(user, "store:manage")) {
+    const [stores, pendingInvoices] = await Promise.all([listStores(), countPendingSubscriptions()]);
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">
+            Masuk sebagai <span className="font-medium text-foreground">{user.fullName}</span> ({ROLE_LABELS[user.role]})
+            {" · "}pengelola platform
+          </p>
+          <Button size="sm" nativeButton={false} render={<Link href="/stores/new" />}>
+            <PlusIcon />
+            Tambah toko
+          </Button>
+        </div>
+        <PlatformSummary summary={summarizeStores(stores)} pendingInvoices={pendingInvoices} />
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-medium text-muted-foreground">Toko (klien)</h2>
+          <StoreCards stores={stores} activeStoreId={user.activeStore?.id ?? null} />
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <p className="text-sm text-muted-foreground">
         Masuk sebagai <span className="font-medium text-foreground">{user.fullName}</span> (
-        {user.roles.map((role) => ROLE_LABELS[role]).join(", ")})
+        {ROLE_LABELS[user.role]})
       </p>
 
       {can(user, "report:view") ? <OwnerDashboard /> : <CashierHome />}
+    </div>
+  );
+}
+
+// Kotak ringkasan platform untuk Superadmin. Bentuknya sama dengan kotak dana
+// Pemilik, tetapi ikon & datanya tentang toko (klien) dan langganan (§14.4).
+function PlatformSummary({ summary, pendingInvoices }: { summary: StoreSummary; pendingInvoices: number }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <StatCard
+        icon={<StoreIcon className="size-4" />}
+        iconClassName="bg-brand text-brand-foreground"
+        title="Toko aktif"
+        value={summary.activeStores}
+        description={
+          summary.inactiveStores > 0
+            ? `Dari ${summary.totalStores} toko terdaftar; ${summary.inactiveStores} dinonaktifkan.`
+            : `Dari ${summary.totalStores} toko terdaftar.`
+        }
+        badge={
+          summary.storesWithoutOwner > 0 ? (
+            <ToneBadge tone="warning">{summary.storesWithoutOwner} belum ada pemilik</ToneBadge>
+          ) : undefined
+        }
+      />
+      <StatCard
+        icon={<ClockAlertIcon className="size-4" />}
+        iconClassName="bg-amber-500 text-white"
+        title="Akan habis ≤ 7 hari"
+        value={summary.expiringSoon}
+        description="Masa gratis/langganan segera berakhir atau sedang masa tenggang."
+        badge={summary.lockedStores > 0 ? <ToneBadge tone="danger">{summary.lockedStores} terkunci</ToneBadge> : undefined}
+      />
+      <StatCard
+        icon={<ReceiptIcon className="size-4" />}
+        iconClassName="bg-sky-600 text-white dark:bg-sky-500"
+        title="Tagihan menunggu"
+        value={pendingInvoices}
+        description="Pembayaran yang perlu dicocokkan lalu ditandai lunas."
+        badge={
+          pendingInvoices > 0 ? (
+            <Button variant="link" size="sm" className="h-auto p-0" nativeButton={false} render={<Link href="/billing?status=PENDING" />}>
+              Buka Tagihan
+            </Button>
+          ) : undefined
+        }
+      />
+      <StatCard
+        icon={<UsersIcon className="size-4" />}
+        iconClassName="bg-emerald-600 text-white dark:bg-emerald-500"
+        title="Pengguna toko"
+        value={summary.totalUsers}
+        description="Pemilik dan kasir di seluruh toko."
+      />
     </div>
   );
 }
@@ -95,21 +191,21 @@ function CashierHome() {
   );
 }
 
-function FundCard({
-  icon,
-  iconClassName,
-  title,
-  amount,
-  description,
-  badge,
-}: {
+function FundCard({ amount, ...props }: Omit<StatCardProps, "value"> & { amount: number }) {
+  return <StatCard {...props} value={formatRupiah(amount)} />;
+}
+
+type StatCardProps = {
   icon: React.ReactNode;
   iconClassName: string;
   title: string;
-  amount: number;
+  value: number | string;
   description: string;
   badge?: React.ReactNode;
-}) {
+};
+
+// Kotak angka umum: ikon berwarna, judul, angka besar, keterangan.
+function StatCard({ icon, iconClassName, title, value, description, badge }: StatCardProps) {
   return (
     <Card>
       <CardHeader>
@@ -120,7 +216,7 @@ function FundCard({
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-1">
-        <span className="font-mono text-2xl font-semibold tabular-nums">{formatRupiah(amount)}</span>
+        <span className="font-mono text-2xl font-semibold tabular-nums">{value}</span>
         <CardDescription>{description}</CardDescription>
       </CardContent>
     </Card>
