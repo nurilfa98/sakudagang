@@ -246,20 +246,29 @@ export const loginAttempts = pgTable(
 // Langganan & pengaturan platform (docs/DATABASE-SCHEMA.md §8, BUSINESS-FLOW §14)
 // ---------------------------------------------------------------------------
 
-// Satu baris saja (id = "default"): kontak admin, rekening pembayaran, gambar
-// QRIS statis, masa gratis & tenggang. Diubah Superadmin di menu Pengaturan.
+// Satu baris saja (id = "default"): kontak admin, gambar QRIS statis, masa
+// gratis & tenggang. Diubah Superadmin di menu Pengaturan. Rekening bank ada
+// di payment_bank_accounts (bisa lebih dari satu).
 export const platformSettings = pgTable("platform_settings", {
   id: varchar("id", { length: 36 }).primaryKey(),
   // Nomor WhatsApp admin SakuDagang (format 62…), tujuan konfirmasi bayar.
   adminPhone: varchar("admin_phone", { length: 20 }),
-  bankName: varchar("bank_name", { length: 50 }),
-  bankAccountNumber: varchar("bank_account_number", { length: 50 }),
-  bankAccountName: varchar("bank_account_name", { length: 100 }),
   // Key file gambar QRIS statis di lib/storage.ts; null = belum diunggah.
   qrisImageKey: varchar("qris_image_key", { length: 255 }),
   freeDays: integer("free_days").notNull().default(14),
   graceDays: integer("grace_days").notNull().default(3),
   updatedAt: updatedAt(),
+});
+
+// Rekening bank tujuan transfer langganan (Pengaturan): boleh banyak, nama
+// bank bebas, boleh kosong (pemilik hanya melihat QRIS). Nomor disimpan
+// angka saja; strip mengikuti pola bank saat ditampilkan (lib/bank.ts).
+export const paymentBankAccounts = pgTable("payment_bank_accounts", {
+  id: id(),
+  bankName: varchar("bank_name", { length: 50 }).notNull(),
+  accountNumber: varchar("account_number", { length: 50 }).notNull(),
+  accountName: varchar("account_name", { length: 100 }).notNull(),
+  createdAt: createdAt(),
 });
 
 // Paket standar: harga TOTAL per periode (1, 6, 12 bulan). 0 = belum diatur.

@@ -1,5 +1,5 @@
-// Pengaturan platform (satu baris, id "default"): kontak admin, rekening,
-// QRIS statis, masa gratis & tenggang. Di lib/ karena dibaca lib/auth/dal.ts
+// Pengaturan platform (satu baris, id "default"): kontak admin, QRIS statis,
+// masa gratis & tenggang. Rekening bank: features/settings/queries.ts. Di lib/ karena dibaca lib/auth/dal.ts
 // (masa tenggang menentukan akses) dan features/stores (masa gratis toko baru).
 // Diubah Superadmin lewat features/settings/actions.ts.
 
@@ -12,9 +12,6 @@ export const PLATFORM_SETTINGS_ID = "default";
 
 export type PlatformSettings = {
   adminPhone: string | null;
-  bankName: string | null;
-  bankAccountNumber: string | null;
-  bankAccountName: string | null;
   qrisImageKey: string | null;
   freeDays: number;
   graceDays: number;
@@ -22,9 +19,6 @@ export type PlatformSettings = {
 
 const DEFAULTS: PlatformSettings = {
   adminPhone: null,
-  bankName: null,
-  bankAccountNumber: null,
-  bankAccountName: null,
   qrisImageKey: null,
   freeDays: 14,
   graceDays: 3,
@@ -36,9 +30,6 @@ export async function getPlatformSettings(): Promise<PlatformSettings> {
   const [row] = await db
     .select({
       adminPhone: platformSettings.adminPhone,
-      bankName: platformSettings.bankName,
-      bankAccountNumber: platformSettings.bankAccountNumber,
-      bankAccountName: platformSettings.bankAccountName,
       qrisImageKey: platformSettings.qrisImageKey,
       freeDays: platformSettings.freeDays,
       graceDays: platformSettings.graceDays,

@@ -86,7 +86,6 @@ const statusColumn = column.accessor("status", {
   cell: ({ getValue }) => <SubscriptionStatusBadge status={getValue()} />,
 });
 
-// Alasan penolakan admin di kolom sendiri (bukan di bawah badge), agar tabel rapi.
 const rejectionColumn = column.accessor((row) => row.rejectionNote ?? "", {
   id: "rejection",
   header: "Alasan ditolak",
@@ -94,7 +93,7 @@ const rejectionColumn = column.accessor((row) => row.rejectionNote ?? "", {
   meta: { className: "hidden lg:table-cell" },
   cell: ({ row }) =>
     row.original.rejectionNote ? (
-      <span className="block max-w-56 truncate text-rose-700 dark:text-rose-300" title={row.original.rejectionNote}>
+      <span className="block max-w-56 truncate" title={row.original.rejectionNote}>
         {row.original.rejectionNote}
       </span>
     ) : (

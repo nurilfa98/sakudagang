@@ -46,7 +46,16 @@ export function QrisImageForm({ imageKey }: { imageKey: string | null }) {
       <form onSubmit={handleSubmit} className="flex max-w-xl flex-1 flex-col gap-4">
         <Field>
           <FieldLabel htmlFor="qris">{hasImage ? "Ganti gambar QRIS" : "Gambar QRIS"}</FieldLabel>
-          <Input ref={fileRef} id="qris" name="qris" type="file" accept="image/png,image/jpeg,image/webp" required />
+          {/* cursor-pointer: aturan UI SakuDagang untuk semua input unggah. */}
+          <Input
+            ref={fileRef}
+            id="qris"
+            name="qris"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            required
+            className="cursor-pointer file:cursor-pointer"
+          />
           <FieldDescription>PNG/JPG/WebP maksimal 2 MB. QRIS statis milik merchant SakuDagang; nominal diketik pembayar.</FieldDescription>
         </Field>
         <div className="flex flex-wrap gap-2">

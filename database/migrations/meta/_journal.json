@@ -92,6 +92,13 @@
       "when": 1793261074028,
       "tag": "0012_subscriptions_drop_proof",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793267072553,
+      "tag": "0013_payment_bank_accounts",
+      "breakpoints": true
     }
   ]
 }

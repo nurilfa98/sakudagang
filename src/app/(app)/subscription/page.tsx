@@ -36,6 +36,7 @@ import { requireStore } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { formatDate } from "@/lib/dates";
 import { firstParam } from "@/lib/filters";
+import { listBankAccounts } from "@/features/settings/queries";
 import { getPlatformSettings } from "@/lib/platform-settings";
 
 export const metadata: Metadata = {
@@ -60,23 +61,18 @@ async function SubscriptionContent({ searchParams }: Pick<PageProps<"/subscripti
   // ?from=/products: user mengklik menu lain saat toko terkunci (nav-main.tsx).
   const fromMenu = NAV_GROUPS.flatMap((group) => group.items).find((item) => item.href === firstParam(params.from));
 
-  const [state, plans, settings, history, years] = await Promise.all([
+  const [state, plans, settings, banks, history, years] = await Promise.all([
     getStoreSubscriptionState(actor.storeId),
     listPlansForStore(actor.storeId),
     getPlatformSettings(),
+    listBankAccounts(),
     listSubscriptions({ ...filters, storeId: actor.storeId }),
     listSubscriptionYears(actor.storeId),
   ]);
   if (!state) return null;
   const { access, open, lastRejected } = state;
   const payments = open ? await listPayments(open.id) : [];
-  const payment = {
-    bankName: settings.bankName,
-    bankAccountNumber: settings.bankAccountNumber,
-    bankAccountName: settings.bankAccountName,
-    hasQris: settings.qrisImageKey != null,
-    adminPhone: settings.adminPhone,
-  };
+  const payment = { banks, hasQris: settings.qrisImageKey != null, adminPhone: settings.adminPhone };
   // Superadmin boleh melihat, tetapi tagihan dibuat oleh Pemilik toko.
   const canChoose = actor.role !== "SUPERADMIN" && can(actor, "subscription:view");
 

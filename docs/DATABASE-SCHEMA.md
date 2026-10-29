@@ -322,10 +322,16 @@ Satu baris, `id = 'default'`, dibuat oleh migration. Diubah Superadmin di menu P
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | admin_phone | varchar(20) null | WhatsApp admin SakuDagang (62…), tujuan konfirmasi bayar. |
-| bank_name, bank_account_number, bank_account_name | varchar null | Rekening transfer manual. |
 | qris_image_key | varchar(255) null | Key gambar QRIS statis di `lib/storage.ts`; dilayani `/api/qris`. |
 | free_days | integer default 14 | Masa gratis toko baru. |
 | grace_days | integer default 3 | Masa tenggang setelah jatuh tempo. |
+
+### `payment_bank_accounts`
+
+Rekening bank tujuan transfer langganan: boleh lebih dari satu, nama bank
+bebas, boleh kosong (pemilik hanya melihat QRIS). `bank_name`,
+`account_number` (angka saja; strip mengikuti pola bank di UI), `account_name`.
+Diatur di Pengaturan; ditampilkan berjajar di panel pembayaran pemilik.
 
 ### `subscription_plans`
 

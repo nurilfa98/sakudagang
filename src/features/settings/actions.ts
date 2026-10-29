@@ -10,11 +10,11 @@ import { z } from "zod";
 import { verifySession } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
-import { platformSettings } from "@/lib/db/schema";
+import { paymentBankAccounts, platformSettings } from "@/lib/db/schema";
 import { getPlatformSettings, PLATFORM_SETTINGS_ID } from "@/lib/platform-settings";
 import { deleteObject, putObject } from "@/lib/storage";
 import type { ActionResult } from "@/types/action-result";
-import { platformSettingsSchema, QRIS_IMAGE_TYPES, QRIS_MAX_BYTES } from "./schemas";
+import { bankAccountIdSchema, bankAccountSchema, platformSettingsSchema, QRIS_IMAGE_TYPES, QRIS_MAX_BYTES } from "./schemas";
 
 const FORBIDDEN = { success: false, message: "Anda tidak memiliki akses." } as const;
 
@@ -27,9 +27,6 @@ export async function updatePlatformSettings(
 
   const parsed = platformSettingsSchema.safeParse({
     adminPhone: formData.get("adminPhone") ?? "",
-    bankName: formData.get("bankName") ?? "",
-    bankAccountNumber: formData.get("bankAccountNumber") ?? "",
-    bankAccountName: formData.get("bankAccountName") ?? "",
     freeDays: formData.get("freeDays") ?? "",
     graceDays: formData.get("graceDays") ?? "",
   });
@@ -45,6 +42,46 @@ export async function updatePlatformSettings(
     .insert(platformSettings)
     .values({ id: PLATFORM_SETTINGS_ID, ...parsed.data })
     .onConflictDoUpdate({ target: platformSettings.id, set: parsed.data });
+
+  revalidatePath("/", "layout");
+  return { success: true, data: undefined };
+}
+
+// ---------------------------------------------------------------------------
+// Rekening bank tujuan transfer (bisa lebih dari satu)
+// ---------------------------------------------------------------------------
+
+export async function addBankAccount(_prevState: ActionResult | undefined, formData: FormData): Promise<ActionResult> {
+  const actor = await verifySession();
+  if (!can(actor, "settings:manage")) return FORBIDDEN;
+
+  const parsed = bankAccountSchema.safeParse({
+    bankName: formData.get("bankName") ?? "",
+    accountNumber: formData.get("accountNumber") ?? "",
+    accountName: formData.get("accountName") ?? "",
+  });
+  if (!parsed.success) {
+    return {
+      success: false,
+      message: "Periksa kembali isian Anda.",
+      fieldErrors: z.flattenError(parsed.error).fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  await db.insert(paymentBankAccounts).values(parsed.data);
+  revalidatePath("/", "layout");
+  return { success: true, data: undefined };
+}
+
+export async function deleteBankAccount(id: string): Promise<ActionResult> {
+  const actor = await verifySession();
+  if (!can(actor, "settings:manage")) return FORBIDDEN;
+
+  const parsed = bankAccountIdSchema.safeParse(id);
+  if (!parsed.success) return { success: false, message: "Rekening tidak ditemukan." };
+
+  const [row] = await db.delete(paymentBankAccounts).where(eq(paymentBankAccounts.id, parsed.data)).returning({ id: paymentBankAccounts.id });
+  if (!row) return { success: false, message: "Rekening tidak ditemukan." };
 
   revalidatePath("/", "layout");
   return { success: true, data: undefined };

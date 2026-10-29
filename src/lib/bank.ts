@@ -38,3 +38,25 @@ export function formatAccountNumber(bankName: string | null | undefined, raw: st
   if (index < digits.length) groups.push(digits.slice(index));
   return groups.join("-");
 }
+
+// Warna khas tiap bank untuk garis tepi kartu rekening (UI pemilik & admin),
+// agar rekening mudah dikenali sekilas. Kelas ditulis lengkap (bukan dirangkai)
+// supaya terbaca Tailwind. Bank lain memakai warna netral.
+const BANK_ACCENTS: { match: RegExp; className: string }[] = [
+  { match: /\bbca\b/i, className: "border-[#0060AF] text-[#0060AF] dark:border-[#4A9BE0] dark:text-[#4A9BE0]" },
+  { match: /\bbri\b/i, className: "border-[#00529C] text-[#00529C] dark:border-[#5A9BD8] dark:text-[#5A9BD8]" },
+  { match: /mandiri/i, className: "border-[#003D79] text-[#003D79] dark:border-[#F2B700] dark:text-[#F2B700]" },
+  { match: /\bbni\b/i, className: "border-[#F15A22] text-[#F15A22] dark:border-[#F58A5C] dark:text-[#F58A5C]" },
+  { match: /\bbsi\b|syariah indonesia/i, className: "border-[#00A39D] text-[#00A39D] dark:border-[#3FC9C3] dark:text-[#3FC9C3]" },
+  { match: /cimb/i, className: "border-[#EE1C25] text-[#EE1C25] dark:border-[#F2686E] dark:text-[#F2686E]" },
+  { match: /jago/i, className: "border-[#F7B500] text-[#B88600] dark:border-[#F7B500] dark:text-[#F7B500]" },
+  { match: /seabank/i, className: "border-[#F15A22] text-[#F15A22] dark:border-[#F58A5C] dark:text-[#F58A5C]" },
+  { match: /permata/i, className: "border-[#00A651] text-[#00A651] dark:border-[#4CD080] dark:text-[#4CD080]" },
+  { match: /danamon/i, className: "border-[#F58220] text-[#F58220] dark:border-[#F8A45C] dark:text-[#F8A45C]" },
+  { match: /\bbtn\b/i, className: "border-[#1C3F94] text-[#1C3F94] dark:border-[#6C8BD8] dark:text-[#6C8BD8]" },
+];
+
+// Kelas Tailwind (warna garis tepi + warna nama bank) untuk kartu rekening.
+export function bankAccentClass(bankName: string | null | undefined) {
+  return BANK_ACCENTS.find((bank) => bank.match.test(bankName ?? ""))?.className ?? "border-border text-foreground";
+}

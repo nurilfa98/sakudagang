@@ -13,8 +13,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { BankAccountsManager } from "@/features/settings/components/bank-accounts-manager";
 import { PlatformSettingsForm } from "@/features/settings/components/platform-settings-form";
 import { QrisImageForm } from "@/features/settings/components/qris-image-form";
+import { listBankAccounts } from "@/features/settings/queries";
 import { PlanPricesForm } from "@/features/subscriptions/components/plan-prices-form";
 import { listPlans, listStorePriceOverrides } from "@/features/subscriptions/queries";
 import { requirePermission } from "@/lib/auth/dal";
@@ -38,7 +40,12 @@ export default function SettingsPage() {
 
 async function SettingsContent() {
   await requirePermission("settings:manage");
-  const [plans, settings, overrides] = await Promise.all([listPlans(), getPlatformSettings(), listStorePriceOverrides()]);
+  const [plans, settings, overrides, bankAccounts] = await Promise.all([
+    listPlans(),
+    getPlatformSettings(),
+    listStorePriceOverrides(),
+    listBankAccounts(),
+  ]);
 
   return (
     <>
@@ -59,6 +66,13 @@ async function SettingsContent() {
         </CardHeader>
         <CardContent className="flex flex-col gap-8">
           <PlatformSettingsForm settings={settings} />
+          <div className="flex flex-col gap-2 border-t pt-6">
+            <p className="text-sm font-medium">Rekening bank tujuan transfer</p>
+            <p className="text-sm text-muted-foreground">
+              Boleh lebih dari satu atau dikosongkan. Semua rekening ditampilkan berjajar ke pemilik toko saat memilih paket.
+            </p>
+            <BankAccountsManager accounts={bankAccounts} />
+          </div>
           <div className="flex flex-col gap-2 border-t pt-6">
             <p className="text-sm font-medium">QRIS statis</p>
             <QrisImageForm imageKey={settings.qrisImageKey} />

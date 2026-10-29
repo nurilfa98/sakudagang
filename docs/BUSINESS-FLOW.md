@@ -510,9 +510,11 @@ QRIS statis). Pengingat WhatsApp dan QRIS dinamis belum.
 1. Pemilik membuka menu Langganan: tampil status (gratis s.d. tanggal,
    aktif s.d. tanggal, tenggang, atau habis) dan tiga kartu paket beserta
    harga yang berlaku untuk tokonya.
-2. Pemilik memilih paket → tampil panel pembayaran: nominal, transfer ke
-   rekening SakuDagang dan/atau QRIS statis (gambar QR diunggah Superadmin di
-   Pengaturan), dan form "Saya sudah bayar". **Memilih paket tidak menyimpan
+2. Pemilik memilih paket → tampil panel pembayaran: nominal, kartu tiap
+   rekening bank SakuDagang (bisa lebih dari satu, diatur di Pengaturan;
+   berjajar di layar lebar, bertumpuk di HP) dan/atau QRIS statis (gambar QR
+   diunggah Superadmin di Pengaturan; bila tidak ada rekening, hanya QRIS yang
+   tampil), dan form "Saya sudah bayar". **Memilih paket tidak menyimpan
    apa pun**; pindah menu atau "Ganti paket" cukup kembali ke pilihan paket,
    sehingga tidak ada tagihan sampah dari pemilik yang ragu-ragu.
 3. Setelah membayar, Pemilik menekan **"Saya sudah bayar"** dan **wajib
