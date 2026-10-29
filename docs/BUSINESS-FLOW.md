@@ -510,27 +510,39 @@ QRIS statis). Pengingat WhatsApp dan QRIS dinamis belum.
 1. Pemilik membuka menu Langganan: tampil status (gratis s.d. tanggal,
    aktif s.d. tanggal, tenggang, atau habis) dan tiga kartu paket beserta
    harga yang berlaku untuk tokonya.
-2. Pemilik memilih paket → tercatat **tagihan** berstatus `PENDING`
-   (menunggu pembayaran) dan tampil cara bayar: transfer ke rekening
-   SakuDagang dan/atau QRIS statis (gambar QR diunggah Superadmin di
-   Pengaturan). Hanya boleh ada satu tagihan terbuka per toko; Pemilik bisa
-   membatalkan selama masih `PENDING`.
+2. Pemilik memilih paket → tampil panel pembayaran: nominal, transfer ke
+   rekening SakuDagang dan/atau QRIS statis (gambar QR diunggah Superadmin di
+   Pengaturan), dan form "Saya sudah bayar". **Memilih paket tidak menyimpan
+   apa pun**; pindah menu atau "Ganti paket" cukup kembali ke pilihan paket,
+   sehingga tidak ada tagihan sampah dari pemilik yang ragu-ragu.
 3. Setelah membayar, Pemilik menekan **"Saya sudah bayar"** dan **wajib
-   mengunggah bukti transfer** (foto/PDF) → status `CLAIMED` (menunggu
-   konfirmasi). Admin mendapat WhatsApp otomatis. Klaim ini **tidak mengubah
-   akses toko**; bila ternyata belum bayar, pemilik tidak mendapat apa pun.
-4. Superadmin melihat klaim di beranda ("Perlu konfirmasi") & menu Tagihan
-   (klaim tampil paling atas, bukti bisa dibuka), mencocokkan mutasi
-   rekening, lalu:
-   - **Tandai lunas** → status `ACTIVE`, masa berlangganan toko diperpanjang; atau
-   - **Tolak** dengan alasan wajib → kembali `PENDING`; alasan dan waktu
-     penolakan tampil ke Pemilik dan tersimpan sebagai jejak bila ada
-     perselisihan. Pemilik bisa mengirim ulang bukti yang benar.
-   Aksi admin (tandai lunas, tolak, batalkan) **hanya tersedia setelah klaim
-   bayar masuk**; selama `PENDING` admin menunggu pemilik.
-   Superadmin juga bisa **membuat tagihan atas nama toko** dari halaman detail
-   toko (pemilik membayar tunai/transfer saat kunjungan), dengan opsi langsung
-   tandai lunas.
+   mengunggah bukti transfer** (foto/PDF) → **saat inilah tagihan tercatat**,
+   langsung berstatus `CLAIMED` (menunggu konfirmasi). Harga dihitung ulang di
+   server dari paket & harga khusus toko saat itu. Admin mendapat WhatsApp
+   otomatis. Klaim ini **tidak mengubah akses toko**; bila ternyata belum
+   bayar, pemilik tidak mendapat apa pun. Satu klaim terbuka per toko.
+4. Satu tagihan bisa dibayar **beberapa kali** (tabel `subscription_payments`,
+   satu baris per bukti). Superadmin melihat pembayaran yang menunggu di
+   beranda ("Perlu konfirmasi") & menu Tagihan (tampil paling atas, bukti bisa
+   dibuka), mencocokkan mutasi rekening, lalu untuk tiap pembayaran:
+   - **Terima** dengan mengisi **nominal yang benar-benar masuk**. Total
+     diterima ≥ harga → tagihan `ACTIVE` (lunas), masa berlangganan toko
+     diperpanjang. Total < harga → tagihan **`UNDERPAID` (Kurang bayar)**:
+     Pemilik melihat "diterima Rp X, kurang Rp Y" dan mengirim bukti
+     kekurangan **pada tagihan yang sama** (tagihan kembali menunggu
+     konfirmasi). Lebih bayar dicatat di keterangan admin untuk dikembalikan manual.
+   - **Tolak** dengan alasan wajib (dana tidak masuk / bukti palsu). Bila
+     tagihan belum pernah menerima pembayaran → tagihan `REJECTED` (Ditolak,
+     status akhir; Pemilik mulai lagi dari pilihan paket). Bila sudah ada yang
+     diterima → tagihan kembali `UNDERPAID`. Alasan tampil ke Pemilik dan
+     tersimpan sebagai jejak bila ada perselisihan.
+   Tidak ada tombol batalkan, baik untuk admin maupun pemilik: setiap baris
+   tagihan adalah klaim dengan bukti. Tampilan tidak menyebut nama pengguna
+   pelaku (keputusan user 29 Okt 2026). Contoh: paket Rp 100.000, transfer
+   Rp 50.000 → admin terima Rp 50.000 → kurang bayar Rp 50.000 → pemilik
+   transfer sisanya dan kirim bukti → admin terima → lunas.
+   Superadmin juga bisa **mencatat pembayaran langsung** dari halaman detail
+   toko (pemilik membayar tunai/transfer saat kunjungan) → langsung `ACTIVE`.
 5. **Perpanjangan** dihitung dari tanggal berakhir yang sedang berjalan bila
    masih di masa depan; bila sudah habis (termasuk saat masa tenggang), dari
    tanggal ditandai lunas. Toko yang membayar lebih awal tidak dirugikan.
@@ -565,6 +577,10 @@ bisa masuk, apa pun status langganannya.
   konfirmasi"**; kartu toko menampilkan "Gratis s.d. …" / "Aktif s.d. …" /
   "Tenggang s.d. …" / "Habis sejak …".
 - Navbar menampilkan masa aktif toko sejak hari pertama ("Gratis s.d. 12 Nov").
+- WhatsApp ke semua Pemilik toko setiap kali admin memeriksa pembayaran:
+  **lunas** (masa aktif diperpanjang sampai tanggal …), **kurang bayar**
+  (diterima Rp X, kurang Rp Y), atau **ditolak** (beserta alasan), dengan
+  tautan ke menu Langganan (`features/subscriptions/notifications.ts`).
 - Pengingat WhatsApp ke semua Pemilik toko **H-3 dan H-1** sebelum masa
   berakhir, dikirim cron harian `/api/cron/subscription-reminders`
   (`features/subscriptions/reminders.ts`); `stores.last_reminder_key`
@@ -576,7 +592,8 @@ bisa masuk, apa pun status langganannya.
 |---|---|
 | `subscription_plans` | Paket standar: `months` (1/6/12), `price`, `is_active`. Diubah di Pengaturan. |
 | `store_plan_prices` | Harga khusus per toko: `store_id`, `months`, `price`, `note` ("negosiasi 12 Nov 2026"). |
-| `subscriptions` | Satu baris per periode bayar: `store_id`, `months`, `price` (snapshot), `starts_at`, `ends_at`, `status` (PENDING/CLAIMED/ACTIVE/CANCELLED), `paid_at`, `note`, `claimed_at`, `proof_key`, `rejected_at`, `rejection_note`, `confirmed_by_id`, `created_by_id`. |
+| `subscriptions` | Satu baris per tagihan/periode: `store_id`, `months`, `price` (snapshot), `amount_paid` (Σ diterima), `starts_at`, `ends_at`, `status` (CLAIMED/UNDERPAID/ACTIVE/REJECTED; PENDING & CANCELLED hanya baris lama), `paid_at`, `note`, `rejected_at`, `rejection_note`, `confirmed_by_id`, `created_by_id`. |
+| `subscription_payments` | Satu baris per bukti transfer: `subscription_id`, `store_id`, `status` (PENDING/ACCEPTED/REJECTED), `proof_key` (folder `YYYY-MM/bukti-transfer/…` di R2), `note` (pemilik), `amount_received` & `review_note` (diisi admin), `reviewed_at`, `reviewed_by_id`, `created_by_id`. |
 | `platform_settings` | Satu baris: nomor WA admin, rekening pembayaran (bank, nomor, atas nama), gambar QRIS statis, masa gratis (hari, 28), masa tenggang (hari, 3). |
 | `stores` (+kolom) | `subscription_until` (timestamp): akhir masa gratis/langganan; diisi saat toko dibuat (= created_at + masa gratis) dan setiap tagihan lunas. |
 

@@ -4,20 +4,37 @@ import type { StoreAccessStatus } from "@/lib/subscription-access";
 
 // Status tagihan di tabel subscriptions. "Habis" tidak disimpan: dihitung
 // dari ends_at (lib/subscription-access.ts).
-// PENDING → CLAIMED (pemilik klik "saya sudah bayar" + bukti) → ACTIVE (admin
-// tandai lunas) atau kembali PENDING (admin tolak dengan alasan).
-export const SUBSCRIPTION_STATUSES = ["PENDING", "CLAIMED", "ACTIVE", "CANCELLED"] as const;
+// Pemilik klik "Saya sudah bayar" + bukti → CLAIMED. Admin memeriksa bukti
+// dan mengisi nominal yang masuk: cukup → ACTIVE (lunas); kurang → UNDERPAID
+// (pemilik mengirim bukti kekurangan pada tagihan yang sama → CLAIMED lagi);
+// dana tidak masuk/bukti palsu → REJECTED (status akhir, pemilik mulai lagi
+// dari pilihan paket). Memilih paket saja tidak menyimpan apa pun.
+// PENDING & CANCELLED hanya untuk baris lama (alur sebelum 29 Okt 2026).
+export const SUBSCRIPTION_STATUSES = ["CLAIMED", "UNDERPAID", "ACTIVE", "REJECTED", "PENDING", "CANCELLED"] as const;
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
 export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
-  PENDING: "Menunggu pembayaran",
   CLAIMED: "Menunggu konfirmasi",
+  UNDERPAID: "Kurang bayar",
   ACTIVE: "Lunas",
+  REJECTED: "Ditolak",
+  PENDING: "Menunggu pembayaran",
   CANCELLED: "Dibatalkan",
 };
 
-// Tagihan yang masih "terbuka": satu toko hanya boleh punya satu.
-export const OPEN_SUBSCRIPTION_STATUSES = ["PENDING", "CLAIMED"] as const;
+// Status yang masih "terbuka" (belum lunas/ditolak): satu toko hanya boleh
+// punya satu. PENDING ikut dijaga untuk baris lama.
+export const OPEN_SUBSCRIPTION_STATUSES = ["CLAIMED", "UNDERPAID", "PENDING"] as const;
+
+// Status satu pembayaran (subscription_payments).
+export const PAYMENT_STATUSES = ["PENDING", "ACCEPTED", "REJECTED"] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  PENDING: "Menunggu konfirmasi",
+  ACCEPTED: "Diterima",
+  REJECTED: "Ditolak",
+};
 
 // Bukti transfer: gambar/PDF maksimal 3 MB.
 export const PROOF_MAX_BYTES = 3 * 1024 * 1024;

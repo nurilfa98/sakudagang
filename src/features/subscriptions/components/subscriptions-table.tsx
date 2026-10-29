@@ -15,12 +15,7 @@ import {
   useUrlFilters,
   type FilterOption,
 } from "@/components/data-table/data-table-filters";
-import {
-  OPEN_SUBSCRIPTION_STATUSES,
-  PLAN_LABELS,
-  SUBSCRIPTION_STATUS_LABELS,
-  SUBSCRIPTION_STATUSES,
-} from "@/features/subscriptions/constants";
+import { PLAN_LABELS, SUBSCRIPTION_STATUS_LABELS, SUBSCRIPTION_STATUSES } from "@/features/subscriptions/constants";
 import type { SubscriptionItem } from "@/features/subscriptions/queries";
 import type { SubscriptionFilters } from "@/features/subscriptions/schemas";
 import { countActiveFilters } from "@/lib/filters";
@@ -34,12 +29,7 @@ const dateColumn = column.accessor("createdAtTime", {
   header: "Dibuat",
   sortFn: "basic",
   meta: { className: "whitespace-nowrap" },
-  cell: ({ row }) => (
-    <div>
-      <span>{row.original.createdAtLabel}</span>
-      <p className="text-xs text-muted-foreground">oleh {row.original.createdByName}</p>
-    </div>
-  ),
+  cell: ({ row }) => row.original.createdAtLabel,
 });
 
 const storeColumn = column.accessor("storeName", {
@@ -59,7 +49,18 @@ const amountColumn = column.accessor("price", {
   header: "Nominal",
   sortFn: "basic",
   meta: { className: "text-right whitespace-nowrap tabular-nums font-medium" },
-  cell: ({ getValue }) => (getValue() === 0 ? "Gratis" : formatRupiah(getValue())),
+  cell: ({ row }) => (
+    <div className="flex flex-col items-end">
+      <span>{formatRupiah(row.original.price)}</span>
+      {/* Riwayat kurang bayar tetap tampil (juga saat menunggu konfirmasi
+          pelunasan) sampai tagihan lunas, agar admin tahu konteksnya. */}
+      {row.original.amountPaid > 0 && row.original.amountPaid < row.original.price && (
+        <span className="text-xs font-normal text-amber-700 dark:text-amber-300">
+          diterima {formatRupiah(row.original.amountPaid)}, kurang {formatRupiah(row.original.price - row.original.amountPaid)}
+        </span>
+      )}
+    </div>
+  ),
 });
 
 const periodColumn = column.accessor((row) => row.periodLabel ?? "", {
@@ -82,31 +83,44 @@ const statusColumn = column.accessor("status", {
   header: "Status",
   sortFn: "text",
   meta: { className: "whitespace-nowrap" },
-  cell: ({ row }) => (
-    <div className="flex flex-col gap-0.5">
-      <SubscriptionStatusBadge status={row.original.status} />
-      {row.original.status === "CLAIMED" && row.original.claimedAtLabel && (
-        <span className="text-xs text-muted-foreground">Klaim {row.original.claimedAtLabel}</span>
-      )}
-      {row.original.status === "PENDING" && row.original.rejectionNote && (
-        <span className="text-xs text-rose-700 dark:text-rose-300">Klaim ditolak</span>
-      )}
-    </div>
-  ),
+  cell: ({ getValue }) => <SubscriptionStatusBadge status={getValue()} />,
+});
+
+// Alasan penolakan admin di kolom sendiri (bukan di bawah badge), agar tabel rapi.
+const rejectionColumn = column.accessor((row) => row.rejectionNote ?? "", {
+  id: "rejection",
+  header: "Alasan ditolak",
+  enableSorting: false,
+  meta: { className: "hidden lg:table-cell" },
+  cell: ({ row }) =>
+    row.original.rejectionNote ? (
+      <span className="block max-w-56 truncate text-rose-700 dark:text-rose-300" title={row.original.rejectionNote}>
+        {row.original.rejectionNote}
+      </span>
+    ) : (
+      <span className="text-muted-foreground">-</span>
+    ),
 });
 
 const actionsColumn = column.display({
   id: "actions",
   header: () => <span className="sr-only">Aksi</span>,
   meta: { className: "w-10 text-right" },
-  cell: ({ row }) =>
-    (OPEN_SUBSCRIPTION_STATUSES as readonly string[]).includes(row.original.status) ? (
-      <BillingRowActions subscription={row.original} />
-    ) : null,
+  // Aksi hanya saat ada pembayaran yang menunggu konfirmasi; kurang bayar
+  // menunggu pemilik mengirim bukti berikutnya.
+  cell: ({ row }) => (row.original.pendingPayment ? <BillingRowActions subscription={row.original} /> : null),
 });
 
 // Dibuat sekali di luar komponen (wajib stabil untuk TanStack Table v9).
-const COLUMNS_STORE = column.columns([dateColumn, planColumn, amountColumn, periodColumn, noteColumn, statusColumn]);
+const COLUMNS_STORE = column.columns([
+  dateColumn,
+  planColumn,
+  amountColumn,
+  periodColumn,
+  noteColumn,
+  statusColumn,
+  rejectionColumn,
+]);
 const COLUMNS_PLATFORM = column.columns([
   dateColumn,
   storeColumn,
@@ -115,9 +129,10 @@ const COLUMNS_PLATFORM = column.columns([
   periodColumn,
   noteColumn,
   statusColumn,
+  rejectionColumn,
   actionsColumn,
 ]);
-const SEARCHABLE = ["storeName", "note"] as const;
+const SEARCHABLE = ["storeName", "note", "rejection"] as const;
 
 const STATUS_OPTIONS: FilterOption[] = [
   { value: FILTER_ALL, label: "Semua status" },

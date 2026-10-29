@@ -22,28 +22,38 @@ const note = z
   .max(255, "Catatan maksimal 255 karakter")
   .transform((value) => value || null);
 
-// Pemilik memilih paket.
-export const requestSubscriptionSchema = z.object({ months: planMonthsSchema });
+// Pemilik klik "Saya sudah bayar": paket yang dipilih (tagihan baru) ATAU id
+// tagihan kurang bayar yang dilengkapi, + catatan opsional (bank pengirim,
+// jam transfer). Bukti (file) divalidasi di action.
+export const claimPaymentSchema = z.object({
+  months: planMonthsSchema.optional(),
+  subscriptionId: subscriptionIdSchema.optional(),
+  note,
+});
 
-// Superadmin menandai lunas, dengan catatan opsional (referensi transfer).
-export const confirmPaymentSchema = z.object({ subscriptionId: subscriptionIdSchema, note });
+export const paymentIdSchema = z.string().min(1).max(36);
 
-// Pemilik klik "Saya sudah bayar": catatan opsional (bank pengirim, jam transfer).
-export const claimPaymentSchema = z.object({ subscriptionId: subscriptionIdSchema, note });
+// Superadmin menerima pembayaran: nominal yang benar-benar masuk (wajib > 0)
+// + keterangan opsional (referensi transfer).
+export const acceptPaymentSchema = z.object({
+  paymentId: paymentIdSchema,
+  amountReceived: rupiahField("Nominal diterima", { min: 1 }),
+  note,
+});
 
-// Superadmin menolak klaim: alasan WAJIB, tampil ke pemilik.
-export const rejectClaimSchema = z.object({
-  subscriptionId: subscriptionIdSchema,
+// Superadmin menolak satu pembayaran: alasan WAJIB, tampil ke pemilik.
+export const rejectPaymentSchema = z.object({
+  paymentId: paymentIdSchema,
   reason: z.string().trim().min(5, "Tulis alasan penolakan (minimal 5 karakter)").max(255),
 });
 
-// Superadmin membuat tagihan atas nama toko (pemilik bayar langsung saat
-// kunjungan). `paid` = langsung tandai lunas.
+
+// Superadmin mencatat pembayaran langsung atas nama toko (pemilik bayar
+// tunai/transfer saat kunjungan): langsung lunas.
 export const adminSubscriptionSchema = z.object({
   storeId: idParam,
   months: planMonthsSchema,
   note,
-  paid: z.boolean(),
 });
 
 // Harga paket standar (Pengaturan): tiga nominal, 0 = belum diatur.

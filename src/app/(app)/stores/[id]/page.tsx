@@ -136,9 +136,9 @@ async function StoreDetailContent({ id }: { id: string }) {
                   {subscription.access.locked
                     ? `Habis sejak ${formatDate(subscription.access.until)}; akses toko terkunci.`
                     : `Berlaku sampai ${formatDate(subscription.access.until)}.`}
-                  {subscription.pending &&
-                    ` Ada tagihan ${PLAN_LABELS[subscription.pending.months]} (${formatRupiah(subscription.pending.price)}) ${
-                      subscription.pending.status === "CLAIMED" ? "menunggu konfirmasi (bukti sudah dikirim)." : "menunggu pembayaran."
+                  {subscription.open &&
+                    ` Ada tagihan ${PLAN_LABELS[subscription.open.months]} (${formatRupiah(subscription.open.price)}) ${
+                      subscription.open.status === "UNDERPAID" ? "kurang bayar." : "menunggu konfirmasi."
                     }`}
                 </CardDescription>
               </div>
@@ -162,7 +162,7 @@ async function StoreDetailContent({ id }: { id: string }) {
                   <TagIcon />
                   Atur harga khusus
                 </Button>
-                {subscription.pending && (
+                {subscription.open && (
                   <Button variant="ghost" nativeButton={false} render={<Link href={`/billing?storeId=${store.id}`} />}>
                     <CreditCardIcon />
                     Lihat tagihan
@@ -171,11 +171,11 @@ async function StoreDetailContent({ id }: { id: string }) {
               </div>
             </div>
             <div className="flex flex-col gap-2 border-t pt-6">
-              <p className="text-sm font-medium">Buat tagihan untuk toko ini</p>
+              <p className="text-sm font-medium">Catat pembayaran langsung</p>
               <p className="text-sm text-muted-foreground">
-                Untuk pemilik yang membayar langsung (tunai/transfer saat kunjungan) atau minta dibuatkan tagihan.
+                Untuk pemilik yang membayar tunai/transfer saat kunjungan. Langsung lunas dan masa aktif diperpanjang.
               </p>
-              <AdminInvoiceForm storeId={store.id} plans={plans} hasPending={subscription.pending != null} />
+              <AdminInvoiceForm storeId={store.id} plans={plans} hasPending={subscription.open != null} />
             </div>
           </CardContent>
         </Card>

@@ -7,12 +7,18 @@
 import "server-only";
 import { and, asc, count, desc, eq, exists, gte, inArray, lt, sql } from "drizzle-orm";
 import { io } from "next/cache";
-import { formatDate, formatDateTime, zonedPeriodRange } from "@/lib/dates";
+import { formatDateTime, formatShortDate, zonedPeriodRange } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { stores, storePlanPrices, subscriptionPlans, subscriptions, users } from "@/lib/db/schema";
+import { stores, storePlanPrices, subscriptionPayments, subscriptionPlans, subscriptions } from "@/lib/db/schema";
 import { getPlatformSettings } from "@/lib/platform-settings";
 import { getStoreAccess, type StoreAccess } from "@/lib/subscription-access";
-import { OPEN_SUBSCRIPTION_STATUSES, PLAN_MONTHS, type PlanMonths, type SubscriptionStatus } from "./constants";
+import {
+  OPEN_SUBSCRIPTION_STATUSES,
+  PLAN_MONTHS,
+  type PaymentStatus,
+  type PlanMonths,
+  type SubscriptionStatus,
+} from "./constants";
 import type { SubscriptionFilters } from "./schemas";
 
 // Batas baris per query; pencarian & halaman berjalan di browser (ARCHITECTURE.md §3).
@@ -26,34 +32,45 @@ export type PlanPrice = {
   note: string | null; // catatan harga khusus
 };
 
+// Satu pembayaran (bukti transfer) di bawah sebuah tagihan.
+export type PaymentItem = {
+  id: string;
+  status: PaymentStatus;
+  proofType: "image" | "pdf" | null; // bukti di /api/payments/[id]/proof
+  note: string | null; // catatan pemilik
+  amountReceived: number | null; // diisi admin saat diterima
+  reviewNote: string | null; // keterangan admin / alasan tolak
+  createdAtLabel: string;
+  reviewedAtLabel: string | null;
+};
+
 export type SubscriptionItem = {
   id: string;
   storeId: string;
   storeName: string;
   months: PlanMonths;
   price: number;
+  amountPaid: number; // Σ pembayaran diterima
   status: SubscriptionStatus;
   note: string | null;
   createdAtLabel: string;
   createdAtTime: number;
   periodLabel: string | null; // "1 Nov 2026 – 1 Des 2026" bila sudah lunas
   paidAtLabel: string | null;
-  createdByName: string;
-  // Klaim bayar pemilik & penolakan admin (jejak bila ada perselisihan).
-  claimedAtLabel: string | null;
-  hasProof: boolean; // bukti transfer tersedia di /api/subscriptions/[id]/proof
-  proofType: "image" | "pdf" | null; // untuk pratinjau
   rejectedAtLabel: string | null;
   rejectionNote: string | null;
+  // Pembayaran yang sedang menunggu konfirmasi admin (bila status CLAIMED).
+  pendingPayment: PaymentItem | null;
 };
 
 export type StoreSubscriptionState = {
   access: StoreAccess;
-  // Tagihan terbuka (PENDING / CLAIMED); maksimal satu per toko.
-  pending: SubscriptionItem | null;
+  // Tagihan terbuka (menunggu konfirmasi / kurang bayar); maksimal satu per toko.
+  open: SubscriptionItem | null;
+  // Penolakan terakhir, bila itu kejadian paling baru (belum ada klaim/lunas
+  // sesudahnya): ditampilkan sebagai pemberitahuan di halaman Langganan.
+  lastRejected: SubscriptionItem | null;
 };
-
-export type PendingCounts = { claimed: number; pending: number };
 
 // Harga standar semua paket, urut 1/6/12 bulan.
 export async function listPlans(): Promise<{ months: PlanMonths; price: number }[]> {
@@ -131,10 +148,10 @@ export async function listStorePriceOverrides(): Promise<StorePriceRow[]> {
   return [...byStore.values()];
 }
 
-// Status akses + tagihan menunggu satu toko (halaman Langganan, detail toko).
+// Status akses + tagihan terbuka satu toko (halaman Langganan, detail toko).
 export async function getStoreSubscriptionState(storeId: string): Promise<StoreSubscriptionState | null> {
   await io();
-  const [[store], settings, pendingRows] = await Promise.all([
+  const [[store], settings, openRows, [latest]] = await Promise.all([
     db
       .select({ subscriptionUntil: stores.subscriptionUntil, hasPaid: hasPaidSubscription() })
       .from(stores)
@@ -142,6 +159,7 @@ export async function getStoreSubscriptionState(storeId: string): Promise<StoreS
       .limit(1),
     getPlatformSettings(),
     listOpenSubscriptions(storeId),
+    listSubscriptions({ storeId, limit: 1 }),
   ]);
   if (!store) return null;
   return {
@@ -150,18 +168,19 @@ export async function getStoreSubscriptionState(storeId: string): Promise<StoreS
       hasPaid: store.hasPaid,
       graceDays: settings.graceDays,
     }),
-    pending: pendingRows[0] ?? null,
+    open: openRows[0] ?? null,
+    lastRejected: latest?.status === "REJECTED" ? latest : null,
   };
 }
 
-// Tagihan terbuka (PENDING/CLAIMED) satu toko; seharusnya maksimal satu.
+// Tagihan terbuka satu toko; seharusnya maksimal satu.
 export async function listOpenSubscriptions(storeId: string) {
   await io();
   const rows = await selectSubscriptions()
     .where(and(eq(subscriptions.storeId, storeId), inArray(subscriptions.status, [...OPEN_SUBSCRIPTION_STATUSES])))
     .orderBy(desc(subscriptions.createdAt))
     .limit(1);
-  return rows.map(toSubscriptionItem);
+  return attachPendingPayments(rows);
 }
 
 // Subquery "toko ini pernah punya tagihan lunas", untuk membedakan masa
@@ -193,11 +212,14 @@ export async function listSubscriptions({
         period ? lt(subscriptions.createdAt, period.end) : undefined,
       ),
     )
-    // Yang perlu tindakan admin (klaim bayar) di atas, lalu terbaru dulu.
-    .orderBy(sql`CASE ${subscriptions.status} WHEN 'CLAIMED' THEN 0 WHEN 'PENDING' THEN 1 ELSE 2 END`, desc(subscriptions.createdAt))
+    // Yang perlu tindakan admin (menunggu konfirmasi) di atas, lalu kurang
+    // bayar, lalu terbaru dulu.
+    .orderBy(
+      sql`CASE ${subscriptions.status} WHEN 'CLAIMED' THEN 0 WHEN 'PENDING' THEN 0 WHEN 'UNDERPAID' THEN 1 ELSE 2 END`,
+      desc(subscriptions.createdAt),
+    )
     .limit(limit);
-
-  return rows.map(toSubscriptionItem);
+  return attachPendingPayments(rows);
 }
 
 function selectSubscriptions() {
@@ -208,62 +230,117 @@ function selectSubscriptions() {
       storeName: stores.name,
       months: subscriptions.months,
       price: subscriptions.price,
+      amountPaid: subscriptions.amountPaid,
       status: subscriptions.status,
       note: subscriptions.note,
       startsAt: subscriptions.startsAt,
       endsAt: subscriptions.endsAt,
       paidAt: subscriptions.paidAt,
-      claimedAt: subscriptions.claimedAt,
-      proofKey: subscriptions.proofKey,
       rejectedAt: subscriptions.rejectedAt,
       rejectionNote: subscriptions.rejectionNote,
       createdAt: subscriptions.createdAt,
-      createdByName: users.fullName,
     })
     .from(subscriptions)
-    .innerJoin(stores, eq(subscriptions.storeId, stores.id))
-    .innerJoin(users, eq(subscriptions.createdById, users.id));
+    .innerJoin(stores, eq(subscriptions.storeId, stores.id));
 }
 
 type SubscriptionRow = Awaited<ReturnType<ReturnType<typeof selectSubscriptions>["execute"]>>[number];
 
-function toSubscriptionItem({ startsAt, endsAt, paidAt, claimedAt, proofKey, rejectedAt, createdAt, ...row }: SubscriptionRow): SubscriptionItem {
-  return {
+// Pembayaran yang menunggu konfirmasi ditempelkan ke tagihan terbuka
+// (satu query untuk semua baris, menghindari N+1).
+async function attachPendingPayments(rows: SubscriptionRow[]): Promise<SubscriptionItem[]> {
+  const openIds = rows
+    .filter((row) => (OPEN_SUBSCRIPTION_STATUSES as readonly string[]).includes(row.status))
+    .map((row) => row.id);
+  const pending = new Map<string, PaymentItem>();
+  if (openIds.length > 0) {
+    const payments = await db
+      .select(paymentColumns)
+      .from(subscriptionPayments)
+      .where(and(inArray(subscriptionPayments.subscriptionId, openIds), eq(subscriptionPayments.status, "PENDING")))
+      .orderBy(desc(subscriptionPayments.createdAt));
+    for (const payment of payments) {
+      if (!pending.has(payment.subscriptionId)) pending.set(payment.subscriptionId, toPaymentItem(payment));
+    }
+  }
+
+  return rows.map(({ startsAt, endsAt, paidAt, rejectedAt, createdAt, ...row }) => ({
     ...row,
     months: row.months as PlanMonths,
     status: row.status as SubscriptionStatus,
     createdAtLabel: formatDateTime(createdAt),
     createdAtTime: createdAt.getTime(),
-    periodLabel: startsAt && endsAt ? `${formatDate(startsAt)} – ${formatDate(endsAt)}` : null,
+    // Format singkat tanpa nama hari: "12 Nov 2026 - 12 Des 2026".
+    periodLabel: startsAt && endsAt ? `${formatShortDate(startsAt)} - ${formatShortDate(endsAt)}` : null,
     paidAtLabel: paidAt ? formatDateTime(paidAt) : null,
-    claimedAtLabel: claimedAt ? formatDateTime(claimedAt) : null,
-    hasProof: proofKey != null,
-    proofType: proofKey == null ? null : proofKey.endsWith(".pdf") ? "pdf" : "image",
     rejectedAtLabel: rejectedAt ? formatDateTime(rejectedAt) : null,
+    pendingPayment: pending.get(row.id) ?? null,
+  }));
+}
+
+const paymentColumns = {
+  id: subscriptionPayments.id,
+  subscriptionId: subscriptionPayments.subscriptionId,
+  status: subscriptionPayments.status,
+  proofKey: subscriptionPayments.proofKey,
+  note: subscriptionPayments.note,
+  amountReceived: subscriptionPayments.amountReceived,
+  reviewNote: subscriptionPayments.reviewNote,
+  reviewedAt: subscriptionPayments.reviewedAt,
+  createdAt: subscriptionPayments.createdAt,
+};
+
+type PaymentRow = {
+  id: string;
+  status: string;
+  proofKey: string | null;
+  note: string | null;
+  amountReceived: number | null;
+  reviewNote: string | null;
+  reviewedAt: Date | null;
+  createdAt: Date;
+};
+
+function toPaymentItem(row: PaymentRow): PaymentItem {
+  return {
+    id: row.id,
+    status: row.status as PaymentStatus,
+    proofType: row.proofKey == null ? null : row.proofKey.endsWith(".pdf") ? "pdf" : "image",
+    note: row.note,
+    amountReceived: row.amountReceived,
+    reviewNote: row.reviewNote,
+    createdAtLabel: formatDateTime(row.createdAt),
+    reviewedAtLabel: row.reviewedAt ? formatDateTime(row.reviewedAt) : null,
   };
 }
 
-// Jumlah tagihan yang menunggu konfirmasi admin (klaim bayar) dan yang masih
-// menunggu pembayaran (kotak di beranda Superadmin).
-export async function countPendingSubscriptions(): Promise<PendingCounts> {
+// Semua pembayaran satu tagihan, urut lama → baru (riwayat cicilan di kartu pemilik).
+export async function listPayments(subscriptionId: string): Promise<PaymentItem[]> {
   await io();
   const rows = await db
-    .select({ status: subscriptions.status, total: count() })
-    .from(subscriptions)
-    .where(inArray(subscriptions.status, [...OPEN_SUBSCRIPTION_STATUSES]))
-    .groupBy(subscriptions.status);
-  return {
-    claimed: rows.find((row) => row.status === "CLAIMED")?.total ?? 0,
-    pending: rows.find((row) => row.status === "PENDING")?.total ?? 0,
-  };
+    .select(paymentColumns)
+    .from(subscriptionPayments)
+    .where(eq(subscriptionPayments.subscriptionId, subscriptionId))
+    .orderBy(asc(subscriptionPayments.createdAt));
+  return rows.map(toPaymentItem);
 }
 
-// Key bukti transfer + toko pemilik, untuk route /api/subscriptions/[id]/proof.
-export async function getSubscriptionProof(id: string) {
+// Jumlah tagihan yang menunggu konfirmasi admin (kotak di beranda Superadmin).
+export async function countPendingSubscriptions() {
+  await io();
   const [row] = await db
-    .select({ storeId: subscriptions.storeId, proofKey: subscriptions.proofKey })
+    .select({ total: count() })
     .from(subscriptions)
-    .where(eq(subscriptions.id, id))
+    .where(inArray(subscriptions.status, ["CLAIMED", "PENDING"]));
+  return row?.total ?? 0;
+}
+
+// Key bukti transfer + toko pemilik, untuk route /api/payments/[id]/proof.
+export async function getPaymentProof(id: string) {
+  const [row] = await db
+    .select({ storeId: subscriptionPayments.storeId, proofKey: subscriptionPayments.proofKey })
+    .from(subscriptionPayments)
+    .where(eq(subscriptionPayments.id, id))
     .limit(1);
   return row ?? null;
 }

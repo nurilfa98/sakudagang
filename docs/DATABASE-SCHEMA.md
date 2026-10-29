@@ -341,16 +341,30 @@ Harga khusus per toko (negosiasi). Unique (`store_id`, `months`). Kolom `price`,
 
 ### `subscriptions`
 
-Satu baris per tagihan/periode. Tidak pernah dihapus.
+Satu baris per klaim/pembayaran. Baris tercipta saat pemilik menekan "Saya sudah bayar" (CLAIMED) atau admin mencatat pembayaran langsung (ACTIVE); memilih paket saja tidak menyimpan apa pun. Tidak pernah dihapus.
 
 | Kolom | Tipe | Keterangan |
 |---|---|---|
 | store_id | FK stores | |
 | months | smallint | Periode paket. |
 | price | bigint | SNAPSHOT harga saat tagihan dibuat. |
-| status | varchar(20) | `PENDING` menunggu bayar, `CLAIMED` pemilik sudah klik "saya sudah bayar" + bukti (menunggu konfirmasi), `ACTIVE` lunas, `CANCELLED`. CHECK constraint. "Habis" dihitung dari `ends_at`. |
-| claimed_at, proof_key | timestamptz / varchar(255) null | Waktu klaim bayar & key bukti transfer di `lib/storage.ts` (dilayani `/api/subscriptions/[id]/proof`). Key diawali folder bulan `YYYY-MM/bukti-transfer/…` agar bukti lama bisa dibersihkan manual per bulan dari bucket R2; bila berkas sudah tidak ada, UI menampilkan "Transaksi sudah selesai" dan `proof_key` tetap tersimpan sebagai jejak. |
-| rejected_at, rejection_note | timestamptz / varchar(255) null | Penolakan admin terakhir (alasan tampil ke pemilik); jejak bila ada perselisihan. |
+| status | varchar(20) | `CLAIMED` ada pembayaran menunggu konfirmasi, `UNDERPAID` kurang bayar (diterima < harga), `ACTIVE` lunas, `REJECTED` ditolak admin (status akhir). `PENDING`/`CANCELLED` hanya baris lama sebelum 29 Okt 2026 (migration 0010 menutup PENDING lama). CHECK constraint. "Habis" dihitung dari `ends_at`. |
+| amount_paid | bigint default 0 | Σ `subscription_payments.amount_received` yang diterima; lunas bila ≥ price. |
+| rejected_at, rejection_note | timestamptz / varchar(255) null | Penolakan akhir tagihan oleh admin (alasan tampil ke pemilik); jejak bila ada perselisihan. |
+
+### `subscription_payments`
+
+Satu baris per bukti transfer / pencatatan pembayaran (migration 0011, data lama disalin dari kolom `proof_key` subscriptions). Tidak pernah dihapus.
+
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| subscription_id, store_id | FK | Tagihan & toko. |
+| status | varchar(20) | `PENDING` menunggu admin, `ACCEPTED` nominal diakui, `REJECTED` ditolak. CHECK constraint. |
+| proof_key | varchar(255) null | Key bukti di `lib/storage.ts`, dilayani `/api/payments/[id]/proof`. Diawali folder bulan `YYYY-MM/bukti-transfer/…` agar bukti lama bisa dihapus manual per bulan dari bucket R2 (data pembayaran tetap utuh, gambar saja yang tidak tampil). Null hanya untuk pencatatan langsung oleh admin. |
+| note | varchar(255) null | Catatan pemilik saat mengirim. |
+| amount_received | bigint null | Nominal yang benar-benar masuk, diisi admin saat menerima. |
+| review_note, reviewed_at, reviewed_by_id | | Keterangan/alasan admin & waktu pemeriksaan. |
+| created_by_id, created_at | | Pengirim & waktu kirim. |
 | starts_at, ends_at | timestamptz null | Diisi saat lunas: mulai dari `stores.subscription_until` bila masih di masa depan, kalau tidak dari waktu konfirmasi. |
 | paid_at | timestamptz null | Waktu ditandai lunas. |
 | note | varchar(255) null | Referensi transfer / keterangan admin. |

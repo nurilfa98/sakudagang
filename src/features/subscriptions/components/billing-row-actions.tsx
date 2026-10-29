@@ -1,15 +1,16 @@
-// Aksi per baris tagihan terbuka di halaman Tagihan (Superadmin).
-// Aksi baru muncul setelah pemilik menekan "Saya sudah bayar" (CLAIMED):
-// Bukti, Tandai lunas, Tolak (alasan wajib), Batalkan. Saat masih PENDING
-// admin hanya menunggu, agar alur selalu lewat klaim + bukti dari pemilik.
-// Hanya "Tandai lunas" yang memperpanjang masa toko.
-// Tombol berupa ikon + tooltip agar tabel tidak melebar; warna: Tandai lunas
-// brand, Tolak oranye (variant edit, sama di dialog), Batalkan merah lembut.
+// Aksi per baris tagihan di halaman Tagihan (Superadmin) untuk pembayaran
+// yang menunggu konfirmasi: Bukti (dialog pratinjau), Terima (isi nominal
+// yang masuk; lunas bila total ≥ harga, selain itu kurang bayar), Tolak
+// (alasan wajib; tagihan ditolak final bila belum ada yang diterima).
+// Tidak ada Batalkan. Hanya pembayaran yang diterima sampai lunas yang
+// memperpanjang masa toko. Tombol berupa ikon + tooltip agar tabel tidak
+// melebar; warna: Terima brand, Tolak oranye (variant edit, sama di dialog).
 
 "use client";
 
 import { CheckIcon, FileSearchIcon, LoaderCircleIcon, XIcon } from "lucide-react";
 import { useState, useTransition } from "react";
+import { RupiahInput } from "@/components/rupiah-input";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -23,31 +24,42 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { confirmSubscriptionPaid, rejectSubscriptionClaim } from "@/features/subscriptions/actions";
+import { acceptPayment, rejectPayment } from "@/features/subscriptions/actions";
 import { PLAN_LABELS } from "@/features/subscriptions/constants";
 import type { SubscriptionItem } from "@/features/subscriptions/queries";
 import { formatRupiah } from "@/lib/format";
 import { notify } from "@/lib/notify";
-import { CancelInvoiceButton } from "./cancel-invoice-button";
 import { ProofPreview } from "./proof-preview";
 
+type Dialog = "proof" | "accept" | "reject" | null;
+
 export function BillingRowActions({ subscription }: { subscription: SubscriptionItem }) {
-  const [dialog, setDialog] = useState<"confirm" | "reject" | "proof" | null>(null);
+  const payment = subscription.pendingPayment;
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [amount, setAmount] = useState("");
   const [text, setText] = useState("");
   const [pending, startTransition] = useTransition();
-  const claimed = subscription.status === "CLAIMED";
+  const remaining = Math.max(subscription.price - subscription.amountPaid, 0);
 
-  function open(next: "confirm" | "reject" | "proof") {
+  if (!payment) return null;
+  const paymentId = payment.id;
+
+  function open(next: Exclude<Dialog, null>) {
     setText("");
+    setAmount(String(remaining));
     setDialog(next);
   }
 
-  function handleConfirm() {
+  function handleAccept() {
     startTransition(async () => {
-      const result = await confirmSubscriptionPaid(subscription.id, text);
+      const result = await acceptPayment(paymentId, amount, text);
       if (!result.success) notify.error(result.message);
       else {
-        notify.success(`Langganan ${subscription.storeName} diperpanjang.`);
+        if (result.data.remaining > 0) {
+          notify.warning(`Diterima. Masih kurang ${formatRupiah(result.data.remaining)}; pemilik diminta melengkapi.`);
+        } else {
+          notify.success(`Lunas. Langganan ${subscription.storeName} diperpanjang.`);
+        }
         setDialog(null);
       }
     });
@@ -55,80 +67,98 @@ export function BillingRowActions({ subscription }: { subscription: Subscription
 
   function handleReject() {
     startTransition(async () => {
-      const result = await rejectSubscriptionClaim(subscription.id, text);
+      const result = await rejectPayment(paymentId, text);
       if (!result.success) notify.error(result.message);
       else {
-        notify.success("Klaim ditolak. Pemilik melihat alasannya di halaman Langganan.");
+        notify.success("Pembayaran ditolak. Pemilik melihat alasannya di halaman Langganan.");
         setDialog(null);
       }
     });
   }
 
-  if (!claimed) {
-    return <span className="text-xs whitespace-nowrap text-muted-foreground">Menunggu pemilik</span>;
-  }
+  // Ringkasan tagihan; bagian kurang bayar disorot amber agar admin langsung
+  // sadar saat memeriksa bukti pelunasan.
+  const summary = (
+    <>
+      {subscription.storeName}: paket {PLAN_LABELS[subscription.months]}, tagihan {formatRupiah(subscription.price)}
+      {subscription.amountPaid > 0 && (
+        <span className="font-medium text-amber-700 dark:text-amber-300">
+          , sudah diterima {formatRupiah(subscription.amountPaid)}, kurang {formatRupiah(remaining)}
+        </span>
+      )}
+      .
+    </>
+  );
 
   return (
     <div className="flex items-center justify-end gap-1">
-      {subscription.proofType && (
+      {payment.proofType && (
         <IconAction label="Lihat bukti transfer" variant="outline" onClick={() => open("proof")}>
           <FileSearchIcon />
         </IconAction>
       )}
-      <IconAction label="Tandai lunas" variant="brand" onClick={() => open("confirm")}>
+      <IconAction label="Terima pembayaran" variant="brand" onClick={() => open("accept")}>
         <CheckIcon />
       </IconAction>
-      <IconAction label="Tolak klaim" variant="edit" onClick={() => open("reject")}>
+      <IconAction label="Tolak pembayaran" variant="edit" onClick={() => open("reject")}>
         <XIcon />
       </IconAction>
-      <CancelInvoiceButton subscriptionId={subscription.id} compact />
 
-      {/* Pratinjau bukti transfer; dari sini admin bisa langsung tandai lunas / tolak. */}
+      {/* Pratinjau bukti; dari sini admin bisa langsung terima / tolak. */}
       <AlertDialog open={dialog === "proof"} onOpenChange={(next) => !next && setDialog(null)}>
         <AlertDialogContent className="max-w-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle>Bukti transfer: {subscription.storeName}</AlertDialogTitle>
             <AlertDialogDescription>
-              Paket {PLAN_LABELS[subscription.months]} sebesar {formatRupiah(subscription.price)}
-              {subscription.claimedAtLabel ? `, dikirim ${subscription.claimedAtLabel}` : ""}.
-              {subscription.note ? ` Catatan pemilik: ${subscription.note}.` : ""}
+              {summary} Dikirim {payment.createdAtLabel}.{payment.note ? ` Catatan pemilik: ${payment.note}.` : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {subscription.proofType && <ProofPreview subscriptionId={subscription.id} type={subscription.proofType} mode="full" />}
+          {payment.proofType && <ProofPreview paymentId={payment.id} type={payment.proofType} mode="full" />}
           <AlertDialogFooter>
             <AlertDialogCancel>Tutup</AlertDialogCancel>
             <Button variant="edit" onClick={() => open("reject")}>
               <XIcon />
               Tolak
             </Button>
-            <Button onClick={() => open("confirm")}>
+            <Button onClick={() => open("accept")}>
               <CheckIcon />
-              Tandai lunas
+              Terima
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={dialog === "confirm" || dialog === "reject"} onOpenChange={(next) => !pending && !next && setDialog(null)}>
+      <AlertDialog open={dialog === "accept" || dialog === "reject"} onOpenChange={(next) => !pending && !next && setDialog(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{dialog === "reject" ? "Tolak klaim pembayaran?" : "Tandai lunas?"}</AlertDialogTitle>
+            <AlertDialogTitle>{dialog === "reject" ? "Tolak pembayaran ini?" : "Terima pembayaran"}</AlertDialogTitle>
             <AlertDialogDescription>
-              {subscription.storeName}: paket {PLAN_LABELS[subscription.months]} sebesar {formatRupiah(subscription.price)}.{" "}
+              {summary}{" "}
               {dialog === "reject"
-                ? "Tagihan kembali ke “menunggu pembayaran” dan alasan Anda tampil ke pemilik. Bukti yang dikirim tetap tersimpan."
-                : "Masa berlangganan toko langsung diperpanjang."}
+                ? subscription.amountPaid > 0
+                  ? "Tagihan kembali kurang bayar; alasan Anda tampil ke pemilik."
+                  : "Tagihan ditandai Ditolak dan alasan Anda tampil ke pemilik; pemilik bisa mengajukan ulang dari pilihan paket. Bukti tetap tersimpan."
+                : "Isi nominal yang benar-benar masuk ke rekening. Bila mencukupi, masa berlangganan toko langsung diperpanjang; bila kurang, pemilik diminta melengkapi."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {dialog === "accept" && (
+            <Field>
+              <FieldLabel htmlFor={`amount-${paymentId}`}>Nominal diterima</FieldLabel>
+              <RupiahInput
+                id={`amount-${paymentId}`}
+                defaultValue={remaining}
+                onValueChange={(value) => setAmount(value == null ? "" : String(value))}
+              />
+              <FieldDescription>Kekurangan saat ini {formatRupiah(remaining)}.</FieldDescription>
+            </Field>
+          )}
           <Field>
-            <FieldLabel htmlFor={`text-${subscription.id}`}>{dialog === "reject" ? "Alasan penolakan" : "Catatan (opsional)"}</FieldLabel>
+            <FieldLabel htmlFor={`text-${paymentId}`}>{dialog === "reject" ? "Alasan penolakan" : "Keterangan (opsional)"}</FieldLabel>
             <Input
-              id={`text-${subscription.id}`}
+              id={`text-${paymentId}`}
               value={text}
               onChange={(event) => setText(event.target.value)}
-              placeholder={
-                dialog === "reject" ? "Dana belum masuk ke rekening per 29 Okt 16.00" : "Transfer BCA 28/10, ref 1234"
-              }
+              placeholder={dialog === "reject" ? "Dana belum masuk ke rekening per 29 Okt 16.00" : "Transfer BCA 28/10, ref 1234"}
               maxLength={255}
               required={dialog === "reject"}
             />
@@ -143,10 +173,10 @@ export function BillingRowActions({ subscription }: { subscription: Subscription
             <Button
               variant={dialog === "reject" ? "edit" : "brand"}
               disabled={pending}
-              onClick={dialog === "reject" ? handleReject : handleConfirm}
+              onClick={dialog === "reject" ? handleReject : handleAccept}
             >
               {pending && <LoaderCircleIcon className="animate-spin" />}
-              {dialog === "reject" ? "Tolak klaim" : "Tandai lunas"}
+              {dialog === "reject" ? "Tolak pembayaran" : "Terima"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

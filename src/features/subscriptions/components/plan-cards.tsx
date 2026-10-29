@@ -1,33 +1,86 @@
-// Kartu pilihan paket (1 / 6 / 12 bulan) di halaman Langganan.
-// Client Component: tombol "Pilih paket" memakai useActionState agar pesan
-// error (harga belum diatur, masih ada tagihan) tampil sebagai notifikasi.
+// Pilihan paket (1 / 6 / 12 bulan) di halaman Langganan, BUSINESS-FLOW §14.2.
+//
+// Memilih paket TIDAK menyimpan apa pun: hanya keadaan di layar. Setelah
+// dipilih, tampil panel pembayaran (nominal, rekening/QRIS, form "Saya sudah
+// bayar"). Tagihan baru tercatat saat pemilik mengirim bukti. Pindah menu atau
+// "Ganti paket" cukup kembali ke pilihan paket, tanpa data sampah.
 //
 // Harga yang tampil sudah harga toko ini (harga khusus bila ada,
-// features/subscriptions/queries.ts listPlansForStore).
+// features/subscriptions/queries.ts listPlansForStore); harga yang disimpan
+// dihitung ulang di server saat klaim, bukan dari browser.
 
 "use client";
 
-import { CheckIcon, LoaderCircleIcon } from "lucide-react";
-import { startTransition, useActionState, useEffect } from "react";
+import { ArrowLeftIcon, CheckIcon, MessageCircleIcon } from "lucide-react";
+import { useState } from "react";
 import { ToneBadge } from "@/components/tone-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { requestSubscription } from "@/features/subscriptions/actions";
-import { PLAN_LABELS } from "@/features/subscriptions/constants";
+import { PLAN_LABELS, type PlanMonths } from "@/features/subscriptions/constants";
 import type { PlanPrice } from "@/features/subscriptions/queries";
-import { monthlyEquivalent, savingsPercent } from "@/features/subscriptions/service";
+import { monthlyEquivalent, savingsPercent, whatsAppLink } from "@/features/subscriptions/service";
+import { PRODUCT_NAME } from "@/lib/brand";
 import { formatRupiah } from "@/lib/format";
-import { notify } from "@/lib/notify";
+import { formatPhone } from "@/lib/phone";
 import { cn } from "@/lib/utils";
+import { ClaimPaymentForm } from "./claim-payment-form";
+import { PaymentInstructions, type PaymentInfo } from "./payment-instructions";
 
-export function PlanCards({ plans, canChoose }: { plans: PlanPrice[]; canChoose: boolean }) {
-  const [state, formAction, pending] = useActionState(requestSubscription, undefined);
+export function PlanCards({
+  plans,
+  canChoose,
+  payment,
+  storeName,
+}: {
+  plans: PlanPrice[];
+  canChoose: boolean;
+  payment: PaymentInfo;
+  storeName: string;
+}) {
+  const [selected, setSelected] = useState<PlanMonths | null>(null);
   const monthly = plans.find((plan) => plan.months === 1)?.price ?? 0;
+  const chosen = selected == null ? null : plans.find((plan) => plan.months === selected);
 
-  useEffect(() => {
-    if (state?.success) notify.success("Tagihan dibuat. Silakan lakukan pembayaran.");
-    else if (state) notify.error(state.message);
-  }, [state]);
+  if (chosen) {
+    const message = `Halo admin ${PRODUCT_NAME}, saya ingin membayar langganan ${PLAN_LABELS[chosen.months]} sebesar ${formatRupiah(chosen.price)} untuk toko ${storeName}.`;
+    return (
+      <Card className="border-brand">
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>Pembayaran paket {PLAN_LABELS[chosen.months]}</CardTitle>
+            <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>
+              <ArrowLeftIcon />
+              Ganti paket
+            </Button>
+          </div>
+          <CardDescription>
+            Bayar lewat salah satu cara di bawah, lalu tekan &ldquo;Saya sudah bayar&rdquo; dan lampirkan buktinya.
+            Belum ada yang tersimpan sampai bukti dikirim.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div>
+            <p className="text-sm text-muted-foreground">Jumlah yang dibayar</p>
+            <p className="font-mono text-3xl font-semibold tabular-nums">{formatRupiah(chosen.price)}</p>
+          </div>
+          <PaymentInstructions payment={payment} />
+          <ClaimPaymentForm months={chosen.months} />
+          {payment.adminPhone && (
+            <div>
+              <Button
+                variant="outline"
+                nativeButton={false}
+                render={<a href={whatsAppLink(payment.adminPhone, message)} target="_blank" rel="noreferrer" />}
+              >
+                <MessageCircleIcon />
+                Hubungi admin via WhatsApp ({formatPhone(payment.adminPhone)})
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="grid gap-4 sm:grid-cols-3">
@@ -61,20 +114,15 @@ export function PlanCards({ plans, canChoose }: { plans: PlanPrice[]; canChoose:
             </CardContent>
             {canChoose && (
               <CardFooter>
-                <form
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    const formData = new FormData(event.currentTarget);
-                    startTransition(() => formAction(formData));
-                  }}
+                <Button
                   className="w-full"
+                  variant={recommended ? "brand" : "outline"}
+                  disabled={unset}
+                  onClick={() => setSelected(plan.months)}
                 >
-                  <input type="hidden" name="months" value={plan.months} />
-                  <Button type="submit" className="w-full" variant={recommended ? "brand" : "outline"} disabled={unset || pending}>
-                    {pending ? <LoaderCircleIcon className="animate-spin" /> : <CheckIcon />}
-                    Pilih paket
-                  </Button>
-                </form>
+                  <CheckIcon />
+                  Pilih paket
+                </Button>
               </CardFooter>
             )}
           </Card>

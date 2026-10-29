@@ -1,13 +1,18 @@
 // Server Action fitur langganan (BUSINESS-FLOW §14).
 //
-// - Pemilik (subscription:view): memilih paket → tagihan PENDING; klik "saya
-//   sudah bayar" + bukti → CLAIMED; membatalkan tagihan PENDING tokonya.
-//   Boleh dijalankan saat toko terkunci (§14.3), karena justru dari sinilah
-//   Pemilik memperpanjang. Klaim bayar TIDAK mengubah akses; hanya "tandai
-//   lunas" oleh Superadmin yang memperpanjang masa toko.
-// - Superadmin (subscription:manage): tandai lunas, batalkan; mengatur harga
-//   paket & harga khusus (settings:manage). Tidak ada langganan gratis/bonus:
-//   semua toko baru sudah mendapat masa gratis dari Pengaturan (§14.1).
+// - Pemilik (subscription:view): memilih paket lalu "Saya sudah bayar" +
+//   bukti → tagihan tercatat (CLAIMED) beserta pembayaran pertama; bila
+//   tagihan kurang bayar, bukti berikutnya ditambahkan ke tagihan yang sama.
+//   Memilih paket saja tidak menyimpan apa pun. Boleh dijalankan saat toko
+//   terkunci (§14.3), karena justru dari sinilah Pemilik memperpanjang. Klaim
+//   bayar TIDAK mengubah akses; hanya pembayaran yang diterima admin sampai
+//   lunas yang memperpanjang masa toko.
+// - Superadmin (subscription:manage): memeriksa tiap pembayaran → terima
+//   (isi nominal masuk; lunas bila total ≥ harga, selain itu kurang bayar)
+//   atau tolak (alasan wajib; bila belum ada yang diterima, tagihan ditolak
+//   final). Mencatat pembayaran langsung; mengatur harga paket & harga khusus
+//   (settings:manage). Tidak ada tombol batalkan dan tidak ada langganan
+//   gratis/bonus: semua toko baru sudah mendapat masa gratis dari Pengaturan.
 //
 // Perpanjangan dihitung di dalam transaksi dengan baris toko dikunci
 // (SELECT ... FOR UPDATE), supaya dua konfirmasi bersamaan tidak saling
@@ -21,7 +26,7 @@ import { z } from "zod";
 import { verifySession } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
-import { stores, storePlanPrices, subscriptionPlans, subscriptions } from "@/lib/db/schema";
+import { stores, storePlanPrices, subscriptionPayments, subscriptionPlans, subscriptions } from "@/lib/db/schema";
 import { zonedYearMonth } from "@/lib/dates";
 import { formatRupiah } from "@/lib/format";
 import { getPlatformSettings } from "@/lib/platform-settings";
@@ -29,17 +34,16 @@ import { deleteObject, putObject } from "@/lib/storage";
 import { nextPeriod } from "@/lib/subscription-access";
 import { sendWhatsApp } from "@/lib/whatsapp";
 import type { ActionResult } from "@/types/action-result";
-import { OPEN_SUBSCRIPTION_STATUSES, PLAN_LABELS, PLAN_MONTHS, PROOF_MAX_BYTES, PROOF_TYPES } from "./constants";
+import { OPEN_SUBSCRIPTION_STATUSES, PLAN_LABELS, PLAN_MONTHS, PROOF_MAX_BYTES, PROOF_TYPES, type PlanMonths } from "./constants";
+import { notifyOwnersOfPaymentOutcome } from "./notifications";
 import { listPlansForStore } from "./queries";
 import {
+  acceptPaymentSchema,
   adminSubscriptionSchema,
   claimPaymentSchema,
-  confirmPaymentSchema,
   planPricesSchema,
-  rejectClaimSchema,
-  requestSubscriptionSchema,
+  rejectPaymentSchema,
   storePlanPricesSchema,
-  subscriptionIdSchema,
 } from "./schemas";
 
 const FORBIDDEN = { success: false, message: "Anda tidak memiliki akses." } as const;
@@ -48,169 +52,9 @@ const NOT_FOUND = { success: false, message: "Tagihan tidak ditemukan." } as con
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // ---------------------------------------------------------------------------
-// Pemilik
+// Pemilik: "Saya sudah bayar" (tagihan baru atau melengkapi kurang bayar)
 // ---------------------------------------------------------------------------
 
-// Dipanggil dari <form action> kartu paket (hidden input months).
-export async function requestSubscription(
-  _prevState: ActionResult | undefined,
-  formData: FormData,
-): Promise<ActionResult> {
-  const actor = await verifySession({ allowLocked: true });
-  if (!can(actor, "subscription:view") || !actor.activeStore) return FORBIDDEN;
-
-  const parsed = requestSubscriptionSchema.safeParse({ months: formData.get("months") });
-  if (!parsed.success) return { success: false, message: "Pilih paket terlebih dahulu." };
-
-  const storeId = actor.activeStore.id;
-  const plan = (await listPlansForStore(storeId)).find((p) => p.months === parsed.data.months);
-  if (!plan || plan.price <= 0) {
-    return { success: false, message: "Harga paket ini belum diatur. Hubungi admin SakuDagang." };
-  }
-
-  // Maksimal satu tagihan terbuka (menunggu bayar / menunggu konfirmasi) per toko.
-  if (await hasOpenSubscription(storeId)) return { success: false, message: "Masih ada tagihan yang belum selesai." };
-
-  await db.insert(subscriptions).values({
-    storeId,
-    months: plan.months,
-    price: plan.price, // snapshot
-    status: "PENDING",
-    createdById: actor.id,
-  });
-
-  revalidateSubscriptionPages();
-  return { success: true, data: undefined };
-}
-
-// Pemilik membatalkan tagihan PENDING tokonya; Superadmin tagihan mana pun.
-export async function cancelSubscription(subscriptionId: string): Promise<ActionResult> {
-  const actor = await verifySession({ allowLocked: true });
-  const id = subscriptionIdSchema.safeParse(subscriptionId);
-  if (!id.success) return NOT_FOUND;
-
-  const platformAdmin = can(actor, "subscription:manage");
-  if (!platformAdmin && !(can(actor, "subscription:view") && actor.activeStore)) return FORBIDDEN;
-
-  // Pemilik hanya bisa membatalkan yang belum diklaim bayar; setelah klaim,
-  // penyelesaiannya di tangan admin (tandai lunas / tolak).
-  const [row] = await db
-    .update(subscriptions)
-    .set({ status: "CANCELLED" })
-    .where(
-      and(
-        eq(subscriptions.id, id.data),
-        platformAdmin
-          ? inArray(subscriptions.status, [...OPEN_SUBSCRIPTION_STATUSES])
-          : and(eq(subscriptions.status, "PENDING"), eq(subscriptions.storeId, actor.activeStore!.id)),
-      ),
-    )
-    .returning({ id: subscriptions.id });
-  if (!row) return NOT_FOUND;
-
-  revalidateSubscriptionPages();
-  return { success: true, data: undefined };
-}
-
-// ---------------------------------------------------------------------------
-// Superadmin
-// ---------------------------------------------------------------------------
-
-// Tandai tagihan PENDING/CLAIMED lunas → periode terisi, masa toko diperpanjang.
-export async function confirmSubscriptionPaid(subscriptionId: string, note?: string): Promise<ActionResult> {
-  const actor = await verifySession();
-  if (!can(actor, "subscription:manage")) return FORBIDDEN;
-
-  const parsed = confirmPaymentSchema.safeParse({ subscriptionId, note: note ?? "" });
-  if (!parsed.success) return NOT_FOUND;
-
-  const result = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ id: subscriptions.id, storeId: subscriptions.storeId, months: subscriptions.months })
-      .from(subscriptions)
-      .where(
-        and(eq(subscriptions.id, parsed.data.subscriptionId), inArray(subscriptions.status, [...OPEN_SUBSCRIPTION_STATUSES])),
-      )
-      .for("update");
-    if (!row) return null;
-
-    const period = await extendStore(tx, row.storeId, row.months);
-    if (!period) return null;
-    await tx
-      .update(subscriptions)
-      .set({
-        status: "ACTIVE",
-        startsAt: period.startsAt,
-        endsAt: period.endsAt,
-        paidAt: new Date(),
-        note: parsed.data.note,
-        confirmedById: actor.id,
-      })
-      .where(eq(subscriptions.id, row.id));
-    return period;
-  });
-  if (!result) return NOT_FOUND;
-
-  revalidateSubscriptionPages();
-  return { success: true, data: undefined };
-}
-
-// Superadmin membuat tagihan untuk sebuah toko (pembayaran langsung saat
-// kunjungan / permintaan pemilik). Harga = harga yang berlaku untuk toko itu.
-// Bila `paid`, langsung lunas dan masa aktif diperpanjang dalam transaksi yang sama.
-export async function createSubscriptionForStore(
-  _prevState: ActionResult<{ paid: boolean }> | undefined,
-  formData: FormData,
-): Promise<ActionResult<{ paid: boolean }>> {
-  const actor = await verifySession();
-  if (!can(actor, "subscription:manage")) return FORBIDDEN;
-
-  const parsed = adminSubscriptionSchema.safeParse({
-    storeId: formData.get("storeId"),
-    months: formData.get("months"),
-    note: formData.get("note") ?? "",
-    paid: formData.get("paid") === "1",
-  });
-  if (!parsed.success) return invalid(parsed.error);
-  const { storeId, months, note, paid } = parsed.data;
-
-  const plan = (await listPlansForStore(storeId)).find((p) => p.months === months);
-  if (!plan || plan.price <= 0) return { success: false, message: "Harga paket ini belum diatur." };
-
-  if (await hasOpenSubscription(storeId)) {
-    return { success: false, message: "Masih ada tagihan yang belum selesai untuk toko ini." };
-  }
-
-  const created = await db.transaction(async (tx) => {
-    const period = paid ? await extendStore(tx, storeId, months) : null;
-    if (paid && !period) return false;
-    const now = new Date();
-    await tx.insert(subscriptions).values({
-      storeId,
-      months,
-      price: plan.price,
-      status: paid ? "ACTIVE" : "PENDING",
-      startsAt: period?.startsAt ?? null,
-      endsAt: period?.endsAt ?? null,
-      paidAt: paid ? now : null,
-      note,
-      createdById: actor.id,
-      confirmedById: paid ? actor.id : null,
-    });
-    return true;
-  });
-  if (!created) return { success: false, message: "Toko tidak ditemukan." };
-
-  revalidateSubscriptionPages();
-  return { success: true, data: { paid } };
-}
-
-// ---------------------------------------------------------------------------
-// Klaim bayar (Pemilik) & penolakan (Superadmin)
-// ---------------------------------------------------------------------------
-
-// Pemilik: "Saya sudah bayar" + bukti transfer (wajib) → CLAIMED. Tidak
-// mengubah akses toko. Admin diberi tahu lewat WhatsApp bila nomornya ada.
 export async function claimSubscriptionPaid(
   _prevState: ActionResult | undefined,
   formData: FormData,
@@ -219,10 +63,11 @@ export async function claimSubscriptionPaid(
   if (!can(actor, "subscription:view") || !actor.activeStore) return FORBIDDEN;
 
   const parsed = claimPaymentSchema.safeParse({
-    subscriptionId: formData.get("subscriptionId"),
+    months: formData.get("months") ?? undefined,
+    subscriptionId: formData.get("subscriptionId") ?? undefined,
     note: formData.get("note") ?? "",
   });
-  if (!parsed.success) return NOT_FOUND;
+  if (!parsed.success) return { success: false, message: "Pilih paket terlebih dahulu." };
 
   const file = formData.get("proof");
   if (!(file instanceof File) || file.size === 0) {
@@ -234,33 +79,79 @@ export async function claimSubscriptionPaid(
   if (file.size > PROOF_MAX_BYTES) return { success: false, message: "Ukuran bukti maksimal 3 MB." };
 
   const storeId = actor.activeStore.id;
-  const [invoice] = await db
-    .select({ id: subscriptions.id, months: subscriptions.months, price: subscriptions.price, proofKey: subscriptions.proofKey })
-    .from(subscriptions)
-    .where(and(eq(subscriptions.id, parsed.data.subscriptionId), eq(subscriptions.storeId, storeId), eq(subscriptions.status, "PENDING")))
-    .limit(1);
-  if (!invoice) return NOT_FOUND;
+  const { note } = parsed.data;
 
-  const extension = file.type === "application/pdf" ? "pdf" : file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-  // Awalan "YYYY-MM/" = folder per bulan di bucket (R2 membuat "folder" dari
-  // awalan nama file), agar bukti transaksi lama mudah dibersihkan manual per
-  // bulan dari dashboard Cloudflare.
-  const { year, month } = zonedYearMonth(new Date());
-  const folder = `${year}-${String(month).padStart(2, "0")}`;
-  const key = `${folder}/bukti-transfer/${storeId}/${invoice.id}-${crypto.randomUUID()}.${extension}`;
+  // Mode 1: melengkapi tagihan kurang bayar milik toko ini.
+  // Mode 2: tagihan baru dari paket yang dipilih (harga dihitung di server).
+  let subscriptionId: string;
+  let months: PlanMonths;
+  let price: number;
+  let isNew = false;
+  if (parsed.data.subscriptionId) {
+    const [open] = await db
+      .select({ id: subscriptions.id, months: subscriptions.months, price: subscriptions.price })
+      .from(subscriptions)
+      .where(
+        and(
+          eq(subscriptions.id, parsed.data.subscriptionId),
+          eq(subscriptions.storeId, storeId),
+          eq(subscriptions.status, "UNDERPAID"),
+        ),
+      )
+      .limit(1);
+    if (!open) return { success: false, message: "Tagihan kurang bayar tidak ditemukan." };
+    subscriptionId = open.id;
+    months = open.months as PlanMonths;
+    price = open.price;
+  } else {
+    if (parsed.data.months == null) return { success: false, message: "Pilih paket terlebih dahulu." };
+    const plan = (await listPlansForStore(storeId)).find((p) => p.months === parsed.data.months);
+    if (!plan || plan.price <= 0) {
+      return { success: false, message: "Harga paket ini belum diatur. Hubungi admin SakuDagang." };
+    }
+    // Satu tagihan terbuka per toko.
+    if (await hasOpenSubscription(storeId)) {
+      return { success: false, message: "Masih ada tagihan yang belum selesai (menunggu konfirmasi / kurang bayar)." };
+    }
+    subscriptionId = crypto.randomUUID();
+    months = plan.months;
+    price = plan.price;
+    isNew = true;
+  }
+
+  const paymentId = crypto.randomUUID();
+  const key = proofKey(storeId, paymentId, file.type);
   await putObject(key, new Uint8Array(await file.arrayBuffer()), file.type);
 
-  const [row] = await db
-    .update(subscriptions)
-    .set({ status: "CLAIMED", claimedAt: new Date(), proofKey: key, note: parsed.data.note ?? undefined })
-    .where(and(eq(subscriptions.id, invoice.id), eq(subscriptions.status, "PENDING")))
-    .returning({ id: subscriptions.id });
-  if (!row) {
+  try {
+    await db.transaction(async (tx) => {
+      if (isNew) {
+        await tx.insert(subscriptions).values({
+          id: subscriptionId,
+          storeId,
+          months,
+          price, // snapshot
+          status: "CLAIMED",
+          createdById: actor.id,
+        });
+      } else {
+        // Kurang bayar → ada pembayaran baru yang menunggu konfirmasi.
+        await tx.update(subscriptions).set({ status: "CLAIMED" }).where(eq(subscriptions.id, subscriptionId));
+      }
+      await tx.insert(subscriptionPayments).values({
+        id: paymentId,
+        subscriptionId,
+        storeId,
+        status: "PENDING",
+        proofKey: key,
+        note,
+        createdById: actor.id,
+      });
+    });
+  } catch (error) {
     await deleteObject(key).catch(() => undefined);
-    return NOT_FOUND;
+    throw error;
   }
-  // Bukti lama (klaim sebelumnya yang ditolak) dibuang.
-  if (invoice.proofKey) await deleteObject(invoice.proofKey).catch(() => undefined);
 
   // Beri tahu admin; gagal kirim tidak membatalkan klaim.
   const settings = await getPlatformSettings();
@@ -268,10 +159,10 @@ export async function claimSubscriptionPaid(
     await sendWhatsApp({
       to: settings.adminPhone,
       text: [
-        `Klaim pembayaran langganan dari toko ${actor.activeStore.name} (${actor.fullName}).`,
-        `Paket ${PLAN_LABELS[invoice.months as (typeof PLAN_MONTHS)[number]]}, ${formatRupiah(invoice.price)}.`,
-        parsed.data.note ? `Catatan: ${parsed.data.note}` : null,
-        "Cek mutasi rekening lalu tandai lunas di menu Tagihan.",
+        `${isNew ? "Klaim pembayaran langganan" : "Bukti pelunasan kurang bayar"} dari toko ${actor.activeStore.name} (${actor.fullName}).`,
+        `Paket ${PLAN_LABELS[months]}, tagihan ${formatRupiah(price)}.`,
+        note ? `Catatan: ${note}` : null,
+        "Cek mutasi rekening lalu terima/tolak di menu Tagihan.",
       ]
         .filter(Boolean)
         .join("\n"),
@@ -282,27 +173,211 @@ export async function claimSubscriptionPaid(
   return { success: true, data: undefined };
 }
 
-// Superadmin menolak klaim (bukti tidak cocok / dana belum masuk): kembali ke
-// PENDING dengan alasan yang tampil ke pemilik. Bukti tetap disimpan sebagai jejak.
-export async function rejectSubscriptionClaim(subscriptionId: string, reason: string): Promise<ActionResult> {
+// ---------------------------------------------------------------------------
+// Superadmin: memeriksa pembayaran
+// ---------------------------------------------------------------------------
+
+// Terima pembayaran dengan nominal yang benar-benar masuk. Total diterima
+// ≥ harga → tagihan lunas, masa toko diperpanjang; kurang → UNDERPAID
+// (pemilik melengkapi pada tagihan yang sama).
+export async function acceptPayment(
+  paymentId: string,
+  amountReceived: string,
+  note?: string,
+): Promise<ActionResult<{ remaining: number }>> {
   const actor = await verifySession();
   if (!can(actor, "subscription:manage")) return FORBIDDEN;
 
-  const parsed = rejectClaimSchema.safeParse({ subscriptionId, reason });
+  const parsed = acceptPaymentSchema.safeParse({ paymentId, amountReceived, note: note ?? "" });
   if (!parsed.success) {
     return { success: false, message: parsed.error.issues[0]?.message ?? "Periksa kembali isian Anda." };
   }
 
-  const [row] = await db
-    .update(subscriptions)
-    .set({ status: "PENDING", claimedAt: null, rejectedAt: new Date(), rejectionNote: parsed.data.reason })
-    .where(and(eq(subscriptions.id, parsed.data.subscriptionId), eq(subscriptions.status, "CLAIMED")))
-    .returning({ id: subscriptions.id });
-  if (!row) return NOT_FOUND;
+  const result = await db.transaction(async (tx) => {
+    const [payment] = await tx
+      .select({ id: subscriptionPayments.id, subscriptionId: subscriptionPayments.subscriptionId })
+      .from(subscriptionPayments)
+      .where(and(eq(subscriptionPayments.id, parsed.data.paymentId), eq(subscriptionPayments.status, "PENDING")))
+      .for("update");
+    if (!payment) return null;
+
+    const [invoice] = await tx
+      .select({
+        id: subscriptions.id,
+        storeId: subscriptions.storeId,
+        months: subscriptions.months,
+        price: subscriptions.price,
+        amountPaid: subscriptions.amountPaid,
+      })
+      .from(subscriptions)
+      .where(and(eq(subscriptions.id, payment.subscriptionId), inArray(subscriptions.status, [...OPEN_SUBSCRIPTION_STATUSES])))
+      .for("update");
+    if (!invoice) return null;
+
+    const now = new Date();
+    await tx
+      .update(subscriptionPayments)
+      .set({
+        status: "ACCEPTED",
+        amountReceived: parsed.data.amountReceived,
+        reviewNote: parsed.data.note,
+        reviewedAt: now,
+        reviewedById: actor.id,
+      })
+      .where(eq(subscriptionPayments.id, payment.id));
+
+    const amountPaid = invoice.amountPaid + parsed.data.amountReceived;
+    if (amountPaid >= invoice.price) {
+      const period = await extendStore(tx, invoice.storeId, invoice.months);
+      if (!period) return null;
+      await tx
+        .update(subscriptions)
+        .set({
+          status: "ACTIVE",
+          amountPaid,
+          startsAt: period.startsAt,
+          endsAt: period.endsAt,
+          paidAt: now,
+          confirmedById: actor.id,
+        })
+        .where(eq(subscriptions.id, invoice.id));
+      return { storeId: invoice.storeId, remaining: 0, until: period.endsAt, price: invoice.price };
+    }
+
+    await tx.update(subscriptions).set({ status: "UNDERPAID", amountPaid }).where(eq(subscriptions.id, invoice.id));
+    return { storeId: invoice.storeId, remaining: invoice.price - amountPaid, until: null, price: invoice.price };
+  });
+  if (!result) return NOT_FOUND;
+
+  // Kabari pemilik (lunas / kurang bayar); gagal kirim tidak membatalkan keputusan.
+  await notifyOwnersOfPaymentOutcome(
+    result.storeId,
+    result.until
+      ? { kind: "paid", until: result.until }
+      : { kind: "underpaid", received: parsed.data.amountReceived, remaining: result.remaining, price: result.price },
+  );
+
+  revalidateSubscriptionPages();
+  return { success: true, data: { remaining: result.remaining } };
+}
+
+// Tolak satu pembayaran (dana tidak masuk / bukti palsu). Bila tagihan belum
+// pernah menerima pembayaran → tagihan ditolak final (REJECTED, pemilik mulai
+// lagi dari pilihan paket); bila sudah ada yang diterima → kembali UNDERPAID.
+export async function rejectPayment(paymentId: string, reason: string): Promise<ActionResult> {
+  const actor = await verifySession();
+  if (!can(actor, "subscription:manage")) return FORBIDDEN;
+
+  const parsed = rejectPaymentSchema.safeParse({ paymentId, reason });
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0]?.message ?? "Periksa kembali isian Anda." };
+  }
+
+  const done = await db.transaction(async (tx) => {
+    const [payment] = await tx
+      .select({ id: subscriptionPayments.id, subscriptionId: subscriptionPayments.subscriptionId })
+      .from(subscriptionPayments)
+      .where(and(eq(subscriptionPayments.id, parsed.data.paymentId), eq(subscriptionPayments.status, "PENDING")))
+      .for("update");
+    if (!payment) return null;
+
+    const [invoice] = await tx
+      .select({ id: subscriptions.id, storeId: subscriptions.storeId, amountPaid: subscriptions.amountPaid })
+      .from(subscriptions)
+      .where(eq(subscriptions.id, payment.subscriptionId))
+      .for("update");
+    if (!invoice) return null;
+
+    const now = new Date();
+    await tx
+      .update(subscriptionPayments)
+      .set({ status: "REJECTED", reviewNote: parsed.data.reason, reviewedAt: now, reviewedById: actor.id })
+      .where(eq(subscriptionPayments.id, payment.id));
+
+    if (invoice.amountPaid > 0) {
+      await tx.update(subscriptions).set({ status: "UNDERPAID" }).where(eq(subscriptions.id, invoice.id));
+    } else {
+      await tx
+        .update(subscriptions)
+        .set({ status: "REJECTED", rejectedAt: now, rejectionNote: parsed.data.reason })
+        .where(eq(subscriptions.id, invoice.id));
+    }
+    return invoice.storeId;
+  });
+  if (!done) return NOT_FOUND;
+
+  // Kabari pemilik beserta alasannya; gagal kirim tidak membatalkan keputusan.
+  await notifyOwnersOfPaymentOutcome(done, { kind: "rejected", reason: parsed.data.reason });
 
   revalidateSubscriptionPages();
   return { success: true, data: undefined };
 }
+
+// Superadmin mencatat pembayaran langsung untuk sebuah toko (tunai/transfer
+// saat kunjungan). Harga = harga yang berlaku untuk toko itu; langsung lunas
+// (tagihan + satu pembayaran diterima) dan masa aktif diperpanjang.
+export async function createSubscriptionForStore(
+  _prevState: ActionResult | undefined,
+  formData: FormData,
+): Promise<ActionResult> {
+  const actor = await verifySession();
+  if (!can(actor, "subscription:manage")) return FORBIDDEN;
+
+  const parsed = adminSubscriptionSchema.safeParse({
+    storeId: formData.get("storeId"),
+    months: formData.get("months"),
+    note: formData.get("note") ?? "",
+  });
+  if (!parsed.success) return invalid(parsed.error);
+  const { storeId, months, note } = parsed.data;
+
+  const plan = (await listPlansForStore(storeId)).find((p) => p.months === months);
+  if (!plan || plan.price <= 0) return { success: false, message: "Harga paket ini belum diatur." };
+
+  if (await hasOpenSubscription(storeId)) {
+    return { success: false, message: "Masih ada tagihan toko ini yang belum selesai (menunggu konfirmasi / kurang bayar)." };
+  }
+
+  const created = await db.transaction(async (tx) => {
+    const period = await extendStore(tx, storeId, months);
+    if (!period) return false;
+    const now = new Date();
+    const subscriptionId = crypto.randomUUID();
+    await tx.insert(subscriptions).values({
+      id: subscriptionId,
+      storeId,
+      months,
+      price: plan.price,
+      amountPaid: plan.price,
+      status: "ACTIVE",
+      startsAt: period.startsAt,
+      endsAt: period.endsAt,
+      paidAt: now,
+      note,
+      createdById: actor.id,
+      confirmedById: actor.id,
+    });
+    await tx.insert(subscriptionPayments).values({
+      subscriptionId,
+      storeId,
+      status: "ACCEPTED",
+      amountReceived: plan.price,
+      reviewNote: note,
+      reviewedAt: now,
+      reviewedById: actor.id,
+      createdById: actor.id,
+    });
+    return true;
+  });
+  if (!created) return { success: false, message: "Toko tidak ditemukan." };
+
+  revalidateSubscriptionPages();
+  return { success: true, data: undefined };
+}
+
+// ---------------------------------------------------------------------------
+// Pembantu
+// ---------------------------------------------------------------------------
 
 async function hasOpenSubscription(storeId: string) {
   const [open] = await db
@@ -311,6 +386,16 @@ async function hasOpenSubscription(storeId: string) {
     .where(and(eq(subscriptions.storeId, storeId), inArray(subscriptions.status, [...OPEN_SUBSCRIPTION_STATUSES])))
     .limit(1);
   return open != null;
+}
+
+// Nama berkas bukti: awalan "YYYY-MM/" = folder per bulan di bucket (R2
+// membuat "folder" dari awalan nama file), agar bukti transaksi lama mudah
+// dibersihkan manual per bulan dari dashboard Cloudflare.
+function proofKey(storeId: string, paymentId: string, mimeType: string) {
+  const extension = mimeType === "application/pdf" ? "pdf" : mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+  const { year, month } = zonedYearMonth(new Date());
+  const folder = `${year}-${String(month).padStart(2, "0")}`;
+  return `${folder}/bukti-transfer/${storeId}/${paymentId}.${extension}`;
 }
 
 // Kunci baris toko, hitung periode baru dari subscription_until yang sedang

@@ -71,6 +71,27 @@
       "when": 1793250480661,
       "tag": "0009_subscriptions_claim",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793258960311,
+      "tag": "0010_subscriptions_rejected",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793261050270,
+      "tag": "0011_subscription_payments",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793261074028,
+      "tag": "0012_subscriptions_drop_proof",
+      "breakpoints": true
     }
   ]
 }

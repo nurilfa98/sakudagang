@@ -1,14 +1,17 @@
 // Halaman /subscription: langganan SATU toko (Pemilik; Superadmin lewat toko
 // aktif). BUSINESS-FLOW §14.
 // - Kartu status: masa gratis / aktif / tenggang / habis, sampai tanggal.
-// - Tagihan menunggu (bila ada): nominal, cara bayar, konfirmasi WA, batalkan.
-// - Pilihan paket (bila tidak ada tagihan menunggu).
+// - Tagihan terbuka (menunggu konfirmasi / kurang bayar): nominal, riwayat
+//   pembayaran, form bukti kekurangan, hubungi admin.
+// - Selain itu: pilihan paket → panel pembayaran → "Saya sudah bayar"
+//   (memilih paket tidak menyimpan apa pun). Penolakan terakhir tampil sebagai
+//   pemberitahuan di atas pilihan paket.
 // - Riwayat tagihan (data table, filter ?status=&year=).
 //
 // allowLocked: ini satu-satunya halaman yang boleh dibuka Pemilik saat toko
 // terkunci (§14.3).
 
-import { LockIcon } from "lucide-react";
+import { LockIcon, XCircleIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { NAV_GROUPS } from "@/components/layout/nav-config";
@@ -23,6 +26,7 @@ import { SubscriptionsTable } from "@/features/subscriptions/components/subscrip
 import { STORE_ACCESS_LABELS } from "@/features/subscriptions/constants";
 import {
   getStoreSubscriptionState,
+  listPayments,
   listPlansForStore,
   listSubscriptions,
   listSubscriptionYears,
@@ -64,7 +68,15 @@ async function SubscriptionContent({ searchParams }: Pick<PageProps<"/subscripti
     listSubscriptionYears(actor.storeId),
   ]);
   if (!state) return null;
-  const { access, pending } = state;
+  const { access, open, lastRejected } = state;
+  const payments = open ? await listPayments(open.id) : [];
+  const payment = {
+    bankName: settings.bankName,
+    bankAccountNumber: settings.bankAccountNumber,
+    bankAccountName: settings.bankAccountName,
+    hasQris: settings.qrisImageKey != null,
+    adminPhone: settings.adminPhone,
+  };
   // Superadmin boleh melihat, tetapi tagihan dibuat oleh Pemilik toko.
   const canChoose = actor.role !== "SUPERADMIN" && can(actor, "subscription:view");
 
@@ -104,12 +116,24 @@ async function SubscriptionContent({ searchParams }: Pick<PageProps<"/subscripti
         </CardContent>
       </Card>
 
-      {pending ? (
-        <InvoiceCard invoice={pending} settings={settings} storeName={actor.activeStore.name} />
+      {open ? (
+        <InvoiceCard invoice={open} payments={payments} payment={payment} storeName={actor.activeStore.name} />
       ) : (
         <section className="flex flex-col gap-3">
+          {lastRejected && (
+            <Alert variant="destructive">
+              <XCircleIcon />
+              <AlertTitle>
+                Klaim pembayaran {lastRejected.rejectedAtLabel ? `pada ${lastRejected.rejectedAtLabel} ` : ""}ditolak
+              </AlertTitle>
+              <AlertDescription>
+                Alasan admin: {lastRejected.rejectionNote}. Periksa kembali transfer Anda, lalu pilih paket dan kirim
+                bukti yang benar.
+              </AlertDescription>
+            </Alert>
+          )}
           <h2 className="text-sm font-medium text-muted-foreground">Pilih paket</h2>
-          <PlanCards plans={plans} canChoose={canChoose} />
+          <PlanCards plans={plans} canChoose={canChoose} payment={payment} storeName={actor.activeStore.name} />
         </section>
       )}
 

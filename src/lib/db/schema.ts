@@ -286,11 +286,16 @@ export const storePlanPrices = pgTable(
 );
 
 // Tagihan/langganan: satu baris per periode bayar. Harga = SNAPSHOT saat
-// tagihan dibuat. Status: PENDING (menunggu bayar), CLAIMED (pemilik sudah
-// klik "saya sudah bayar" + unggah bukti, menunggu konfirmasi admin), ACTIVE
-// (lunas, periode terisi), CANCELLED. "Habis" tidak disimpan: dihitung dari
-// ends_at. Hanya ACTIVE yang memperpanjang masa toko; klaim bayar tidak
-// membuka akses apa pun (BUSINESS-FLOW §14.2).
+// tagihan dibuat. Baris baru tercipta saat pemilik menekan "Saya sudah bayar"
+// (langsung CLAIMED) atau admin mencatat pembayaran langsung (ACTIVE); memilih
+// paket saja tidak menyimpan apa pun. Bukti & nominal tiap transfer ada di
+// subscription_payments (satu tagihan bisa dibayar beberapa kali).
+// Status: CLAIMED (ada pembayaran menunggu konfirmasi admin), UNDERPAID
+// (kurang bayar: diterima < harga, pemilik perlu melengkapi), ACTIVE (lunas,
+// periode terisi), REJECTED (ditolak admin, status akhir). PENDING dan
+// CANCELLED hanya untuk baris lama sebelum 29 Okt 2026. "Habis" tidak
+// disimpan: dihitung dari ends_at. Hanya ACTIVE yang memperpanjang masa toko
+// (BUSINESS-FLOW §14.2).
 export const subscriptions = pgTable(
   "subscriptions",
   {
@@ -304,13 +309,13 @@ export const subscriptions = pgTable(
     startsAt: timestamptz("starts_at"),
     endsAt: timestamptz("ends_at"),
     paidAt: timestamptz("paid_at"),
+    // Total yang sudah diterima admin (Σ subscription_payments ACCEPTED).
+    // Lunas bila ≥ price. Disimpan agar daftar tidak perlu menjumlah ulang.
+    amountPaid: rupiah("amount_paid").notNull().default(0),
     // Catatan: referensi transfer, keterangan admin, dll.
     note: varchar("note", { length: 255 }),
-    // Klaim bayar pemilik: waktu klik + key bukti transfer (lib/storage.ts).
-    claimedAt: timestamptz("claimed_at"),
-    proofKey: varchar("proof_key", { length: 255 }),
-    // Penolakan admin terakhir (bukti tidak cocok): waktu + alasan, tampil ke
-    // pemilik dan tersimpan sebagai jejak bila ada perselisihan.
+    // Penolakan akhir oleh admin (dana tidak masuk / bukti palsu): waktu +
+    // alasan, tampil ke pemilik dan tersimpan sebagai jejak bila ada perselisihan.
     rejectedAt: timestamptz("rejected_at"),
     rejectionNote: varchar("rejection_note", { length: 255 }),
     createdById: userRef("created_by_id").notNull(),
@@ -321,6 +326,44 @@ export const subscriptions = pgTable(
   (t) => [
     index("subscriptions_store_idx").on(t.storeId),
     index("subscriptions_status_idx").on(t.status),
-    check("subscriptions_status_check", sql`${t.status} IN ('PENDING', 'CLAIMED', 'ACTIVE', 'CANCELLED')`),
+    check(
+      "subscriptions_status_check",
+      sql`${t.status} IN ('PENDING', 'CLAIMED', 'UNDERPAID', 'ACTIVE', 'REJECTED', 'CANCELLED')`,
+    ),
+  ],
+);
+
+// Pembayaran per tagihan: satu baris per bukti transfer yang dikirim pemilik
+// (atau pencatatan langsung oleh admin). Admin memeriksa bukti lalu mengisi
+// nominal yang benar-benar masuk (amount_received); bila kurang dari harga,
+// tagihan menjadi UNDERPAID dan pemilik mengirim bukti berikutnya pada
+// tagihan yang sama. Baris tidak pernah dihapus (jejak).
+export const subscriptionPayments = pgTable(
+  "subscription_payments",
+  {
+    id: id(),
+    subscriptionId: varchar("subscription_id", { length: 36 })
+      .notNull()
+      .references(() => subscriptions.id),
+    storeId: storeRef(),
+    // PENDING (menunggu admin), ACCEPTED (nominal diakui), REJECTED (ditolak).
+    status: varchar("status", { length: 20 }).notNull(),
+    // Key bukti transfer di lib/storage.ts, awalan folder bulan "YYYY-MM/".
+    // Null hanya untuk pencatatan langsung oleh admin (tanpa bukti).
+    proofKey: varchar("proof_key", { length: 255 }),
+    // Catatan pemilik saat mengirim (bank pengirim, jam transfer).
+    note: varchar("note", { length: 255 }),
+    // Diisi admin saat memeriksa: nominal yang masuk + keterangan/alasan tolak.
+    amountReceived: rupiah("amount_received"),
+    reviewNote: varchar("review_note", { length: 255 }),
+    reviewedAt: timestamptz("reviewed_at"),
+    reviewedById: userRef("reviewed_by_id"),
+    createdById: userRef("created_by_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("subscription_payments_subscription_idx").on(t.subscriptionId),
+    index("subscription_payments_status_idx").on(t.status),
+    check("subscription_payments_status_check", sql`${t.status} IN ('PENDING', 'ACCEPTED', 'REJECTED')`),
   ],
 );
