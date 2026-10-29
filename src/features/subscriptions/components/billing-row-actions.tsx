@@ -92,11 +92,7 @@ export function BillingRowActions({ subscription }: { subscription: Subscription
               {subscription.note ? ` Catatan pemilik: ${subscription.note}.` : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {subscription.proofType && (
-            <div className="flex justify-center overflow-auto">
-              <ProofPreview subscriptionId={subscription.id} type={subscription.proofType} />
-            </div>
-          )}
+          {subscription.proofType && <ProofPreview subscriptionId={subscription.id} type={subscription.proofType} mode="full" />}
           <AlertDialogFooter>
             <AlertDialogCancel>Tutup</AlertDialogCancel>
             <Button variant="destructive" onClick={() => open("reject")}>
