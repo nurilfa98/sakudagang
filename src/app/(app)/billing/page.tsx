@@ -1,7 +1,8 @@
 // Halaman /billing (Superadmin): semua tagihan langganan lintas toko.
 // Tagihan menunggu konfirmasi (klaim bayar) tampil paling atas: lihat bukti,
-// tandai lunas, atau tolak dengan alasan. Tagihan menunggu pembayaran bisa
-// ditandai lunas atau dibatalkan.
+// tandai lunas, tolak dengan alasan, atau batalkan. Tagihan yang masih
+// menunggu pembayaran tidak punya aksi: admin menunggu pemilik menekan
+// "Saya sudah bayar" lebih dulu.
 // Filter ?storeId=&status=&year= (docs/ARCHITECTURE.md §3 "Daftar data").
 
 import type { Metadata } from "next";
@@ -23,7 +24,7 @@ export default function BillingPage({ searchParams }: PageProps<"/billing">) {
     <>
       <PageHeader
         title="Tagihan langganan"
-        description="Tagihan semua toko. Cocokkan mutasi rekening, lalu tandai lunas agar langganan toko diperpanjang."
+        description="Tagihan semua toko. Setelah pemilik mengirim bukti bayar, cocokkan mutasi rekening lalu tandai lunas agar langganan toko diperpanjang."
       />
       <Suspense fallback={<BillingSkeleton />}>
         <BillingContent searchParams={searchParams} />

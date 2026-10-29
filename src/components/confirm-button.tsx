@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 export function ConfirmButton({
   label,
   variant,
+  size,
   disabled,
   dialogTitle,
   dialogDescription,
@@ -37,6 +38,7 @@ export function ConfirmButton({
 }: {
   label: string;
   variant: ComponentProps<typeof Button>["variant"];
+  size?: ComponentProps<typeof Button>["size"];
   disabled?: boolean;
   dialogTitle: string;
   dialogDescription: string;
@@ -60,7 +62,7 @@ export function ConfirmButton({
     <>
       <Button
         variant={variant}
-        size={icon && !label ? "icon" : undefined}
+        size={icon && !label ? "icon" : size}
         disabled={disabled}
         onClick={() => setOpen(true)}
         aria-label={ariaLabel}

@@ -1,6 +1,7 @@
-// Aksi per baris tagihan terbuka di halaman Tagihan (Superadmin):
-// - PENDING : Tandai lunas (catatan opsional), Batalkan.
-// - CLAIMED : Lihat bukti, Tandai lunas, Tolak (alasan wajib, tampil ke pemilik).
+// Aksi per baris tagihan terbuka di halaman Tagihan (Superadmin).
+// Aksi baru muncul setelah pemilik menekan "Saya sudah bayar" (CLAIMED):
+// Bukti, Tandai lunas, Tolak (alasan wajib), Batalkan. Saat masih PENDING
+// admin hanya menunggu, agar alur selalu lewat klaim + bukti dari pemilik.
 // Hanya "Tandai lunas" yang memperpanjang masa toko.
 
 "use client";
@@ -60,9 +61,13 @@ export function BillingRowActions({ subscription }: { subscription: Subscription
     });
   }
 
+  if (!claimed) {
+    return <span className="text-xs whitespace-nowrap text-muted-foreground">Menunggu pemilik</span>;
+  }
+
   return (
-    <div className="flex justify-end gap-1">
-      {claimed && subscription.proofType && (
+    <div className="flex items-center justify-end gap-1">
+      {subscription.proofType && (
         <Button size="sm" variant="outline" onClick={() => open("proof")}>
           <FileSearchIcon />
           Bukti
@@ -72,14 +77,11 @@ export function BillingRowActions({ subscription }: { subscription: Subscription
         <CheckIcon />
         Tandai lunas
       </Button>
-      {claimed ? (
-        <Button size="sm" variant="ghost" onClick={() => open("reject")}>
-          <XIcon />
-          Tolak
-        </Button>
-      ) : (
-        <CancelInvoiceButton subscriptionId={subscription.id} compact />
-      )}
+      <Button size="sm" variant="edit" onClick={() => open("reject")}>
+        <XIcon />
+        Tolak
+      </Button>
+      <CancelInvoiceButton subscriptionId={subscription.id} compact />
 
       {/* Pratinjau bukti transfer; dari sini admin bisa langsung tandai lunas / tolak. */}
       <AlertDialog open={dialog === "proof"} onOpenChange={(next) => !next && setDialog(null)}>

@@ -17,7 +17,8 @@ export function CancelInvoiceButton({ subscriptionId, compact = false }: { subsc
   return (
     <ConfirmButton
       label={compact ? "Batalkan" : "Batalkan tagihan"}
-      variant="ghost"
+      variant="destructive"
+      size={compact ? "sm" : undefined}
       dialogTitle="Batalkan tagihan ini?"
       dialogDescription="Tagihan dibatalkan dan bisa dibuat lagi kapan saja dengan memilih paket."
       confirmLabel="Batalkan tagihan"

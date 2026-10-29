@@ -526,6 +526,8 @@ QRIS statis). Pengingat WhatsApp dan QRIS dinamis belum.
    - **Tolak** dengan alasan wajib → kembali `PENDING`; alasan dan waktu
      penolakan tampil ke Pemilik dan tersimpan sebagai jejak bila ada
      perselisihan. Pemilik bisa mengirim ulang bukti yang benar.
+   Aksi admin (tandai lunas, tolak, batalkan) **hanya tersedia setelah klaim
+   bayar masuk**; selama `PENDING` admin menunggu pemilik.
    Superadmin juga bisa **membuat tagihan atas nama toko** dari halaman detail
    toko (pemilik membayar tunai/transfer saat kunjungan), dengan opsi langsung
    tandai lunas.
