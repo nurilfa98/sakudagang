@@ -1,5 +1,7 @@
 // Halaman /billing (Superadmin): semua tagihan langganan lintas toko.
-// Tagihan PENDING bisa ditandai lunas atau dibatalkan dari baris tabel.
+// Tagihan menunggu konfirmasi (klaim bayar) tampil paling atas: lihat bukti,
+// tandai lunas, atau tolak dengan alasan. Tagihan menunggu pembayaran bisa
+// ditandai lunas atau dibatalkan.
 // Filter ?storeId=&status=&year= (docs/ARCHITECTURE.md §3 "Daftar data").
 
 import type { Metadata } from "next";

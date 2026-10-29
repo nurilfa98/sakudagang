@@ -5,14 +5,14 @@
 // teks + angka (untuk mengurutkan) ke data table.
 
 import "server-only";
-import { and, asc, count, desc, eq, exists, gte, lt, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, gte, inArray, lt, sql } from "drizzle-orm";
 import { io } from "next/cache";
 import { formatDate, formatDateTime, zonedPeriodRange } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { stores, storePlanPrices, subscriptionPlans, subscriptions, users } from "@/lib/db/schema";
 import { getPlatformSettings } from "@/lib/platform-settings";
 import { getStoreAccess, type StoreAccess } from "@/lib/subscription-access";
-import { PLAN_MONTHS, type PlanMonths, type SubscriptionStatus } from "./constants";
+import { OPEN_SUBSCRIPTION_STATUSES, PLAN_MONTHS, type PlanMonths, type SubscriptionStatus } from "./constants";
 import type { SubscriptionFilters } from "./schemas";
 
 // Batas baris per query; pencarian & halaman berjalan di browser (ARCHITECTURE.md §3).
@@ -39,12 +39,21 @@ export type SubscriptionItem = {
   periodLabel: string | null; // "1 Nov 2026 – 1 Des 2026" bila sudah lunas
   paidAtLabel: string | null;
   createdByName: string;
+  // Klaim bayar pemilik & penolakan admin (jejak bila ada perselisihan).
+  claimedAtLabel: string | null;
+  hasProof: boolean; // bukti transfer tersedia di /api/subscriptions/[id]/proof
+  proofType: "image" | "pdf" | null; // untuk pratinjau
+  rejectedAtLabel: string | null;
+  rejectionNote: string | null;
 };
 
 export type StoreSubscriptionState = {
   access: StoreAccess;
-  pending: SubscriptionItem | null; // tagihan yang menunggu bayar (maks. satu)
+  // Tagihan terbuka (PENDING / CLAIMED); maksimal satu per toko.
+  pending: SubscriptionItem | null;
 };
+
+export type PendingCounts = { claimed: number; pending: number };
 
 // Harga standar semua paket, urut 1/6/12 bulan.
 export async function listPlans(): Promise<{ months: PlanMonths; price: number }[]> {
@@ -132,7 +141,7 @@ export async function getStoreSubscriptionState(storeId: string): Promise<StoreS
       .where(eq(stores.id, storeId))
       .limit(1),
     getPlatformSettings(),
-    listSubscriptions({ storeId, status: "PENDING", limit: 1 }),
+    listOpenSubscriptions(storeId),
   ]);
   if (!store) return null;
   return {
@@ -143,6 +152,16 @@ export async function getStoreSubscriptionState(storeId: string): Promise<StoreS
     }),
     pending: pendingRows[0] ?? null,
   };
+}
+
+// Tagihan terbuka (PENDING/CLAIMED) satu toko; seharusnya maksimal satu.
+export async function listOpenSubscriptions(storeId: string) {
+  await io();
+  const rows = await selectSubscriptions()
+    .where(and(eq(subscriptions.storeId, storeId), inArray(subscriptions.status, [...OPEN_SUBSCRIPTION_STATUSES])))
+    .orderBy(desc(subscriptions.createdAt))
+    .limit(1);
+  return rows.map(toSubscriptionItem);
 }
 
 // Subquery "toko ini pernah punya tagihan lunas", untuk membedakan masa
@@ -165,7 +184,24 @@ export async function listSubscriptions({
 }: SubscriptionFilters & { limit?: number }): Promise<SubscriptionItem[]> {
   await io();
   const period = year ? zonedPeriodRange(year) : null;
-  const rows = await db
+  const rows = await selectSubscriptions()
+    .where(
+      and(
+        storeId ? eq(subscriptions.storeId, storeId) : undefined,
+        status ? eq(subscriptions.status, status) : undefined,
+        period ? gte(subscriptions.createdAt, period.start) : undefined,
+        period ? lt(subscriptions.createdAt, period.end) : undefined,
+      ),
+    )
+    // Yang perlu tindakan admin (klaim bayar) di atas, lalu terbaru dulu.
+    .orderBy(sql`CASE ${subscriptions.status} WHEN 'CLAIMED' THEN 0 WHEN 'PENDING' THEN 1 ELSE 2 END`, desc(subscriptions.createdAt))
+    .limit(limit);
+
+  return rows.map(toSubscriptionItem);
+}
+
+function selectSubscriptions() {
+  return db
     .select({
       id: subscriptions.id,
       storeId: subscriptions.storeId,
@@ -177,24 +213,22 @@ export async function listSubscriptions({
       startsAt: subscriptions.startsAt,
       endsAt: subscriptions.endsAt,
       paidAt: subscriptions.paidAt,
+      claimedAt: subscriptions.claimedAt,
+      proofKey: subscriptions.proofKey,
+      rejectedAt: subscriptions.rejectedAt,
+      rejectionNote: subscriptions.rejectionNote,
       createdAt: subscriptions.createdAt,
       createdByName: users.fullName,
     })
     .from(subscriptions)
     .innerJoin(stores, eq(subscriptions.storeId, stores.id))
-    .innerJoin(users, eq(subscriptions.createdById, users.id))
-    .where(
-      and(
-        storeId ? eq(subscriptions.storeId, storeId) : undefined,
-        status ? eq(subscriptions.status, status) : undefined,
-        period ? gte(subscriptions.createdAt, period.start) : undefined,
-        period ? lt(subscriptions.createdAt, period.end) : undefined,
-      ),
-    )
-    .orderBy(desc(subscriptions.createdAt))
-    .limit(limit);
+    .innerJoin(users, eq(subscriptions.createdById, users.id));
+}
 
-  return rows.map(({ startsAt, endsAt, paidAt, createdAt, ...row }) => ({
+type SubscriptionRow = Awaited<ReturnType<ReturnType<typeof selectSubscriptions>["execute"]>>[number];
+
+function toSubscriptionItem({ startsAt, endsAt, paidAt, claimedAt, proofKey, rejectedAt, createdAt, ...row }: SubscriptionRow): SubscriptionItem {
+  return {
     ...row,
     months: row.months as PlanMonths,
     status: row.status as SubscriptionStatus,
@@ -202,17 +236,36 @@ export async function listSubscriptions({
     createdAtTime: createdAt.getTime(),
     periodLabel: startsAt && endsAt ? `${formatDate(startsAt)} – ${formatDate(endsAt)}` : null,
     paidAtLabel: paidAt ? formatDateTime(paidAt) : null,
-  }));
+    claimedAtLabel: claimedAt ? formatDateTime(claimedAt) : null,
+    hasProof: proofKey != null,
+    proofType: proofKey == null ? null : proofKey.endsWith(".pdf") ? "pdf" : "image",
+    rejectedAtLabel: rejectedAt ? formatDateTime(rejectedAt) : null,
+  };
 }
 
-// Jumlah tagihan menunggu konfirmasi (kotak di beranda Superadmin).
-export async function countPendingSubscriptions() {
+// Jumlah tagihan yang menunggu konfirmasi admin (klaim bayar) dan yang masih
+// menunggu pembayaran (kotak di beranda Superadmin).
+export async function countPendingSubscriptions(): Promise<PendingCounts> {
   await io();
-  const [row] = await db
-    .select({ total: count() })
+  const rows = await db
+    .select({ status: subscriptions.status, total: count() })
     .from(subscriptions)
-    .where(eq(subscriptions.status, "PENDING"));
-  return row?.total ?? 0;
+    .where(inArray(subscriptions.status, [...OPEN_SUBSCRIPTION_STATUSES]))
+    .groupBy(subscriptions.status);
+  return {
+    claimed: rows.find((row) => row.status === "CLAIMED")?.total ?? 0,
+    pending: rows.find((row) => row.status === "PENDING")?.total ?? 0,
+  };
+}
+
+// Key bukti transfer + toko pemilik, untuk route /api/subscriptions/[id]/proof.
+export async function getSubscriptionProof(id: string) {
+  const [row] = await db
+    .select({ storeId: subscriptions.storeId, proofKey: subscriptions.proofKey })
+    .from(subscriptions)
+    .where(eq(subscriptions.id, id))
+    .limit(1);
+  return row ?? null;
 }
 
 // Tahun yang punya tagihan, untuk pilihan filter.

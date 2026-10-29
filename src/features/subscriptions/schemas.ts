@@ -28,6 +28,15 @@ export const requestSubscriptionSchema = z.object({ months: planMonthsSchema });
 // Superadmin menandai lunas, dengan catatan opsional (referensi transfer).
 export const confirmPaymentSchema = z.object({ subscriptionId: subscriptionIdSchema, note });
 
+// Pemilik klik "Saya sudah bayar": catatan opsional (bank pengirim, jam transfer).
+export const claimPaymentSchema = z.object({ subscriptionId: subscriptionIdSchema, note });
+
+// Superadmin menolak klaim: alasan WAJIB, tampil ke pemilik.
+export const rejectClaimSchema = z.object({
+  subscriptionId: subscriptionIdSchema,
+  reason: z.string().trim().min(5, "Tulis alasan penolakan (minimal 5 karakter)").max(255),
+});
+
 // Superadmin membuat tagihan atas nama toko (pemilik bayar langsung saat
 // kunjungan). `paid` = langsung tandai lunas.
 export const adminSubscriptionSchema = z.object({

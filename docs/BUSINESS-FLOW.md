@@ -510,20 +510,29 @@ QRIS statis). Pengingat WhatsApp dan QRIS dinamis belum.
 1. Pemilik membuka menu Langganan: tampil status (gratis s.d. tanggal,
    aktif s.d. tanggal, tenggang, atau habis) dan tiga kartu paket beserta
    harga yang berlaku untuk tokonya.
-2. Pemilik memilih paket → tercatat **tagihan** berstatus `PENDING` dan tampil
-   cara bayar: transfer ke rekening SakuDagang dan/atau QRIS statis (gambar
-   QR diunggah Superadmin di Pengaturan) + tombol "Konfirmasi via WhatsApp"
-   ke admin. Hanya boleh ada satu tagihan `PENDING` per toko; Pemilik bisa
-   membatalkannya.
-3. Superadmin melihat tagihan `PENDING` di beranda platform & menu Tagihan,
-   mencocokkan mutasi rekening, lalu menandai **lunas** → status `ACTIVE`,
-   masa berlangganan toko diperpanjang. Superadmin juga bisa **membuat
-   tagihan atas nama toko** dari halaman detail toko (pemilik membayar
-   tunai/transfer saat kunjungan), dengan opsi langsung tandai lunas.
-4. **Perpanjangan** dihitung dari tanggal berakhir yang sedang berjalan bila
-   masih di masa depan; bila sudah habis, dari tanggal konfirmasi lunas.
-   Toko yang membayar lebih awal tidak dirugikan.
-5. Pembayaran otomatis (QRIS dinamis / VA lewat payment gateway) = tahap
+2. Pemilik memilih paket → tercatat **tagihan** berstatus `PENDING`
+   (menunggu pembayaran) dan tampil cara bayar: transfer ke rekening
+   SakuDagang dan/atau QRIS statis (gambar QR diunggah Superadmin di
+   Pengaturan). Hanya boleh ada satu tagihan terbuka per toko; Pemilik bisa
+   membatalkan selama masih `PENDING`.
+3. Setelah membayar, Pemilik menekan **"Saya sudah bayar"** dan **wajib
+   mengunggah bukti transfer** (foto/PDF) → status `CLAIMED` (menunggu
+   konfirmasi). Admin mendapat WhatsApp otomatis. Klaim ini **tidak mengubah
+   akses toko**; bila ternyata belum bayar, pemilik tidak mendapat apa pun.
+4. Superadmin melihat klaim di beranda ("Perlu konfirmasi") & menu Tagihan
+   (klaim tampil paling atas, bukti bisa dibuka), mencocokkan mutasi
+   rekening, lalu:
+   - **Tandai lunas** → status `ACTIVE`, masa berlangganan toko diperpanjang; atau
+   - **Tolak** dengan alasan wajib → kembali `PENDING`; alasan dan waktu
+     penolakan tampil ke Pemilik dan tersimpan sebagai jejak bila ada
+     perselisihan. Pemilik bisa mengirim ulang bukti yang benar.
+   Superadmin juga bisa **membuat tagihan atas nama toko** dari halaman detail
+   toko (pemilik membayar tunai/transfer saat kunjungan), dengan opsi langsung
+   tandai lunas.
+5. **Perpanjangan** dihitung dari tanggal berakhir yang sedang berjalan bila
+   masih di masa depan; bila sudah habis (termasuk saat masa tenggang), dari
+   tanggal ditandai lunas. Toko yang membayar lebih awal tidak dirugikan.
+6. Pembayaran otomatis (QRIS dinamis / VA lewat payment gateway) = tahap
    berikutnya; lihat §14.7.
 
 ### 14.3 Saat akses ditutup (login terbatas)
@@ -565,7 +574,7 @@ bisa masuk, apa pun status langganannya.
 |---|---|
 | `subscription_plans` | Paket standar: `months` (1/6/12), `price`, `is_active`. Diubah di Pengaturan. |
 | `store_plan_prices` | Harga khusus per toko: `store_id`, `months`, `price`, `note` ("negosiasi 12 Nov 2026"). |
-| `subscriptions` | Satu baris per periode bayar: `store_id`, `months`, `price` (snapshot), `starts_at`, `ends_at`, `status` (PENDING/ACTIVE/CANCELLED), `paid_at`, `payment_note`, `confirmed_by_id`, `created_by_id`. |
+| `subscriptions` | Satu baris per periode bayar: `store_id`, `months`, `price` (snapshot), `starts_at`, `ends_at`, `status` (PENDING/CLAIMED/ACTIVE/CANCELLED), `paid_at`, `note`, `claimed_at`, `proof_key`, `rejected_at`, `rejection_note`, `confirmed_by_id`, `created_by_id`. |
 | `platform_settings` | Satu baris: nomor WA admin, rekening pembayaran (bank, nomor, atas nama), gambar QRIS statis, masa gratis (hari, 28), masa tenggang (hari, 3). |
 | `stores` (+kolom) | `subscription_until` (timestamp): akhir masa gratis/langganan; diisi saat toko dibuat (= created_at + masa gratis) dan setiap tagihan lunas. |
 

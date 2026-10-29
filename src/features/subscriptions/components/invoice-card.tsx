@@ -1,8 +1,13 @@
-// Kartu tagihan yang menunggu pembayaran (halaman Langganan): nominal, cara
-// bayar (transfer / QRIS statis), tombol konfirmasi via WhatsApp ke admin,
-// dan tombol batalkan. Server Component; tombol batal adalah Client Component.
+// Kartu tagihan terbuka di halaman Langganan (Pemilik), BUSINESS-FLOW §14.2:
+// - PENDING : nominal, cara bayar (transfer / QRIS statis), form "Saya sudah
+//             bayar" (bukti wajib), konfirmasi WhatsApp, batalkan. Bila klaim
+//             sebelumnya ditolak admin, alasannya tampil di atas.
+// - CLAIMED : "Menunggu konfirmasi" + waktu klaim + bukti; tidak bisa
+//             dibatalkan pemilik (penyelesaian di tangan admin).
+// Server Component; form & tombol adalah Client Component.
 
-import { MessageCircleIcon } from "lucide-react";
+import { ClockIcon, FileCheckIcon, MessageCircleIcon, XCircleIcon } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PLAN_LABELS } from "@/features/subscriptions/constants";
@@ -14,6 +19,8 @@ import { formatRupiah } from "@/lib/format";
 import { formatPhone } from "@/lib/phone";
 import type { PlatformSettings } from "@/lib/platform-settings";
 import { CancelInvoiceButton } from "./cancel-invoice-button";
+import { ClaimPaymentForm } from "./claim-payment-form";
+import { ProofPreview } from "./proof-preview";
 import { SubscriptionStatusBadge } from "./subscription-badges";
 
 export function InvoiceCard({
@@ -25,66 +32,106 @@ export function InvoiceCard({
   settings: PlatformSettings;
   storeName: string;
 }) {
+  const claimed = invoice.status === "CLAIMED";
   const hasBank = settings.bankName && settings.bankAccountNumber;
-  const message = `Halo admin ${PRODUCT_NAME}, saya sudah membayar langganan ${PLAN_LABELS[invoice.months]} sebesar ${formatRupiah(invoice.price)} untuk toko ${storeName}. Mohon dikonfirmasi. Terima kasih.`;
+  const message = claimed
+    ? `Halo admin ${PRODUCT_NAME}, saya sudah mengirim bukti pembayaran langganan ${PLAN_LABELS[invoice.months]} (${formatRupiah(invoice.price)}) untuk toko ${storeName}. Mohon dikonfirmasi. Terima kasih.`
+    : `Halo admin ${PRODUCT_NAME}, saya ingin membayar langganan ${PLAN_LABELS[invoice.months]} sebesar ${formatRupiah(invoice.price)} untuk toko ${storeName}.`;
 
   return (
-    <Card className="border-amber-300 dark:border-amber-700">
+    <Card className={claimed ? "border-sky-300 dark:border-sky-700" : "border-amber-300 dark:border-amber-700"}>
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
-          <CardTitle>Tagihan menunggu pembayaran</CardTitle>
+          <CardTitle>{claimed ? "Menunggu konfirmasi" : "Tagihan menunggu pembayaran"}</CardTitle>
           <SubscriptionStatusBadge status={invoice.status} />
         </div>
         <CardDescription>
-          Paket {PLAN_LABELS[invoice.months]}, dibuat {invoice.createdAtLabel}. Setelah dibayar, konfirmasi ke admin
-          agar langganan diaktifkan.
+          Paket {PLAN_LABELS[invoice.months]}, dibuat {invoice.createdAtLabel}.{" "}
+          {claimed
+            ? "Admin sedang mencocokkan pembayaran Anda dengan mutasi rekening. Masa aktif diperpanjang begitu ditandai lunas."
+            : "Bayar lewat salah satu cara di bawah, lalu tekan “Saya sudah bayar” dan lampirkan buktinya."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {!claimed && invoice.rejectionNote && (
+          <Alert variant="destructive">
+            <XCircleIcon />
+            <AlertTitle>Klaim pembayaran sebelumnya ditolak{invoice.rejectedAtLabel ? ` (${invoice.rejectedAtLabel})` : ""}</AlertTitle>
+            <AlertDescription>
+              Alasan admin: {invoice.rejectionNote}. Periksa kembali transfer Anda, lalu kirim ulang bukti yang benar.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div>
           <p className="text-sm text-muted-foreground">Jumlah yang dibayar</p>
           <p className="font-mono text-3xl font-semibold tabular-nums">{formatRupiah(invoice.price)}</p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-lg border p-4">
-            <p className="text-sm font-medium">Transfer bank</p>
-            {hasBank ? (
-              <dl className="mt-2 text-sm">
-                <dt className="text-muted-foreground">Bank</dt>
-                <dd>{settings.bankName}</dd>
-                <dt className="mt-1 text-muted-foreground">Nomor rekening</dt>
-                <dd className="font-mono text-base tabular-nums">
-                  {formatAccountNumber(settings.bankName, settings.bankAccountNumber ?? "")}
-                </dd>
-                <dt className="mt-1 text-muted-foreground">Atas nama</dt>
-                <dd>{settings.bankAccountName ?? "-"}</dd>
-              </dl>
-            ) : (
-              <p className="mt-2 text-sm text-muted-foreground">Rekening belum diatur. Hubungi admin.</p>
+        {claimed ? (
+          <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-4 text-sm">
+            <p className="flex items-center gap-2">
+              <ClockIcon className="size-4 text-muted-foreground" />
+              Dikirim {invoice.claimedAtLabel}
+            </p>
+            {invoice.note && <p className="text-muted-foreground">Catatan: {invoice.note}</p>}
+            {invoice.proofType && (
+              <div className="flex flex-col gap-2 pt-2">
+                <p className="flex items-center gap-2">
+                  <FileCheckIcon className="size-4 text-muted-foreground" />
+                  Bukti transfer yang Anda kirim
+                </p>
+                <ProofPreview subscriptionId={invoice.id} type={invoice.proofType} className="self-start" />
+              </div>
             )}
           </div>
-          <div className="rounded-lg border p-4">
-            <p className="text-sm font-medium">QRIS</p>
-            {settings.qrisImageKey ? (
-              // eslint-disable-next-line @next/next/no-img-element -- gambar dilayani route /api/qris setelah cek login
-              <img src="/api/qris" alt="QRIS SakuDagang" className="mt-2 w-full max-w-56 rounded-md border bg-white" />
-            ) : (
-              <p className="mt-2 text-sm text-muted-foreground">QRIS belum tersedia. Gunakan transfer bank.</p>
-            )}
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-lg border p-4">
+              <p className="text-sm font-medium">Transfer bank</p>
+              {hasBank ? (
+                <dl className="mt-2 text-sm">
+                  <dt className="text-muted-foreground">Bank</dt>
+                  <dd>{settings.bankName}</dd>
+                  <dt className="mt-1 text-muted-foreground">Nomor rekening</dt>
+                  <dd className="font-mono text-base tabular-nums">
+                    {formatAccountNumber(settings.bankName, settings.bankAccountNumber ?? "")}
+                  </dd>
+                  <dt className="mt-1 text-muted-foreground">Atas nama</dt>
+                  <dd>{settings.bankAccountName ?? "-"}</dd>
+                </dl>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">Rekening belum diatur. Hubungi admin.</p>
+              )}
+            </div>
+            <div className="rounded-lg border p-4">
+              <p className="text-sm font-medium">QRIS</p>
+              {settings.qrisImageKey ? (
+                // eslint-disable-next-line @next/next/no-img-element -- gambar dilayani route /api/qris setelah cek login
+                <img src="/api/qris" alt="QRIS SakuDagang" className="mt-2 w-full max-w-56 rounded-md border bg-white" />
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">QRIS belum tersedia. Gunakan transfer bank.</p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {!claimed && <ClaimPaymentForm subscriptionId={invoice.id} />}
 
         <div className="flex flex-wrap items-center gap-2">
           {settings.adminPhone ? (
-            <Button nativeButton={false} render={<a href={whatsAppLink(settings.adminPhone, message)} target="_blank" rel="noreferrer" />}>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<a href={whatsAppLink(settings.adminPhone, message)} target="_blank" rel="noreferrer" />}
+            >
               <MessageCircleIcon />
-              Konfirmasi via WhatsApp ({formatPhone(settings.adminPhone)})
+              Hubungi admin via WhatsApp ({formatPhone(settings.adminPhone)})
             </Button>
           ) : (
             <p className="text-sm text-muted-foreground">Nomor WhatsApp admin belum diatur.</p>
           )}
-          <CancelInvoiceButton subscriptionId={invoice.id} />
+          {!claimed && <CancelInvoiceButton subscriptionId={invoice.id} />}
         </div>
       </CardContent>
     </Card>

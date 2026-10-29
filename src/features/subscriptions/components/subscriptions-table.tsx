@@ -16,6 +16,7 @@ import {
   type FilterOption,
 } from "@/components/data-table/data-table-filters";
 import {
+  OPEN_SUBSCRIPTION_STATUSES,
   PLAN_LABELS,
   SUBSCRIPTION_STATUS_LABELS,
   SUBSCRIPTION_STATUSES,
@@ -81,14 +82,27 @@ const statusColumn = column.accessor("status", {
   header: "Status",
   sortFn: "text",
   meta: { className: "whitespace-nowrap" },
-  cell: ({ getValue }) => <SubscriptionStatusBadge status={getValue()} />,
+  cell: ({ row }) => (
+    <div className="flex flex-col gap-0.5">
+      <SubscriptionStatusBadge status={row.original.status} />
+      {row.original.status === "CLAIMED" && row.original.claimedAtLabel && (
+        <span className="text-xs text-muted-foreground">Klaim {row.original.claimedAtLabel}</span>
+      )}
+      {row.original.status === "PENDING" && row.original.rejectionNote && (
+        <span className="text-xs text-rose-700 dark:text-rose-300">Klaim ditolak</span>
+      )}
+    </div>
+  ),
 });
 
 const actionsColumn = column.display({
   id: "actions",
   header: () => <span className="sr-only">Aksi</span>,
   meta: { className: "w-10 text-right" },
-  cell: ({ row }) => (row.original.status === "PENDING" ? <BillingRowActions subscription={row.original} /> : null),
+  cell: ({ row }) =>
+    (OPEN_SUBSCRIPTION_STATUSES as readonly string[]).includes(row.original.status) ? (
+      <BillingRowActions subscription={row.original} />
+    ) : null,
 });
 
 // Dibuat sekali di luar komponen (wajib stabil untuk TanStack Table v9).

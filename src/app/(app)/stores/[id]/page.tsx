@@ -137,7 +137,9 @@ async function StoreDetailContent({ id }: { id: string }) {
                     ? `Habis sejak ${formatDate(subscription.access.until)}; akses toko terkunci.`
                     : `Berlaku sampai ${formatDate(subscription.access.until)}.`}
                   {subscription.pending &&
-                    ` Ada tagihan ${PLAN_LABELS[subscription.pending.months]} (${formatRupiah(subscription.pending.price)}) menunggu konfirmasi.`}
+                    ` Ada tagihan ${PLAN_LABELS[subscription.pending.months]} (${formatRupiah(subscription.pending.price)}) ${
+                      subscription.pending.status === "CLAIMED" ? "menunggu konfirmasi (bukti sudah dikirim)." : "menunggu pembayaran."
+                    }`}
                 </CardDescription>
               </div>
               <StoreAccessBadge status={subscription.access.status} />
@@ -161,7 +163,7 @@ async function StoreDetailContent({ id }: { id: string }) {
                   Atur harga khusus
                 </Button>
                 {subscription.pending && (
-                  <Button variant="ghost" nativeButton={false} render={<Link href={`/billing?storeId=${store.id}&status=PENDING`} />}>
+                  <Button variant="ghost" nativeButton={false} render={<Link href={`/billing?storeId=${store.id}`} />}>
                     <CreditCardIcon />
                     Lihat tagihan
                   </Button>

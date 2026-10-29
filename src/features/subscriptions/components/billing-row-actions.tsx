@@ -1,9 +1,11 @@
-// Aksi per baris tagihan PENDING di halaman Tagihan (Superadmin):
-// "Tandai lunas" (dengan catatan opsional) dan "Batalkan".
+// Aksi per baris tagihan terbuka di halaman Tagihan (Superadmin):
+// - PENDING : Tandai lunas (catatan opsional), Batalkan.
+// - CLAIMED : Lihat bukti, Tandai lunas, Tolak (alasan wajib, tampil ke pemilik).
+// Hanya "Tandai lunas" yang memperpanjang masa toko.
 
 "use client";
 
-import { CheckIcon, LoaderCircleIcon } from "lucide-react";
+import { CheckIcon, FileSearchIcon, LoaderCircleIcon, XIcon } from "lucide-react";
 import { useState, useTransition } from "react";
 import {
   AlertDialog,
@@ -17,62 +19,136 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { confirmSubscriptionPaid } from "@/features/subscriptions/actions";
+import { confirmSubscriptionPaid, rejectSubscriptionClaim } from "@/features/subscriptions/actions";
 import { PLAN_LABELS } from "@/features/subscriptions/constants";
 import type { SubscriptionItem } from "@/features/subscriptions/queries";
 import { formatRupiah } from "@/lib/format";
 import { notify } from "@/lib/notify";
 import { CancelInvoiceButton } from "./cancel-invoice-button";
+import { ProofPreview } from "./proof-preview";
 
 export function BillingRowActions({ subscription }: { subscription: SubscriptionItem }) {
-  const [open, setOpen] = useState(false);
-  const [note, setNote] = useState("");
+  const [dialog, setDialog] = useState<"confirm" | "reject" | "proof" | null>(null);
+  const [text, setText] = useState("");
   const [pending, startTransition] = useTransition();
+  const claimed = subscription.status === "CLAIMED";
+
+  function open(next: "confirm" | "reject" | "proof") {
+    setText("");
+    setDialog(next);
+  }
 
   function handleConfirm() {
     startTransition(async () => {
-      const result = await confirmSubscriptionPaid(subscription.id, note);
+      const result = await confirmSubscriptionPaid(subscription.id, text);
       if (!result.success) notify.error(result.message);
       else {
         notify.success(`Langganan ${subscription.storeName} diperpanjang.`);
-        setOpen(false);
+        setDialog(null);
+      }
+    });
+  }
+
+  function handleReject() {
+    startTransition(async () => {
+      const result = await rejectSubscriptionClaim(subscription.id, text);
+      if (!result.success) notify.error(result.message);
+      else {
+        notify.success("Klaim ditolak. Pemilik melihat alasannya di halaman Langganan.");
+        setDialog(null);
       }
     });
   }
 
   return (
     <div className="flex justify-end gap-1">
-      <Button size="sm" onClick={() => setOpen(true)}>
+      {claimed && subscription.proofType && (
+        <Button size="sm" variant="outline" onClick={() => open("proof")}>
+          <FileSearchIcon />
+          Bukti
+        </Button>
+      )}
+      <Button size="sm" onClick={() => open("confirm")}>
         <CheckIcon />
         Tandai lunas
       </Button>
-      <CancelInvoiceButton subscriptionId={subscription.id} compact />
+      {claimed ? (
+        <Button size="sm" variant="ghost" onClick={() => open("reject")}>
+          <XIcon />
+          Tolak
+        </Button>
+      ) : (
+        <CancelInvoiceButton subscriptionId={subscription.id} compact />
+      )}
 
-      <AlertDialog open={open} onOpenChange={(next) => !pending && setOpen(next)}>
+      {/* Pratinjau bukti transfer; dari sini admin bisa langsung tandai lunas / tolak. */}
+      <AlertDialog open={dialog === "proof"} onOpenChange={(next) => !next && setDialog(null)}>
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bukti transfer: {subscription.storeName}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Paket {PLAN_LABELS[subscription.months]} sebesar {formatRupiah(subscription.price)}
+              {subscription.claimedAtLabel ? `, dikirim ${subscription.claimedAtLabel}` : ""}.
+              {subscription.note ? ` Catatan pemilik: ${subscription.note}.` : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {subscription.proofType && (
+            <div className="flex justify-center overflow-auto">
+              <ProofPreview subscriptionId={subscription.id} type={subscription.proofType} />
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Tutup</AlertDialogCancel>
+            <Button variant="destructive" onClick={() => open("reject")}>
+              <XIcon />
+              Tolak
+            </Button>
+            <Button onClick={() => open("confirm")}>
+              <CheckIcon />
+              Tandai lunas
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={dialog === "confirm" || dialog === "reject"} onOpenChange={(next) => !pending && !next && setDialog(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Tandai lunas?</AlertDialogTitle>
+            <AlertDialogTitle>{dialog === "reject" ? "Tolak klaim pembayaran?" : "Tandai lunas?"}</AlertDialogTitle>
             <AlertDialogDescription>
-              {subscription.storeName}: paket {PLAN_LABELS[subscription.months]} sebesar {formatRupiah(subscription.price)}.
-              Masa berlangganan toko langsung diperpanjang.
+              {subscription.storeName}: paket {PLAN_LABELS[subscription.months]} sebesar {formatRupiah(subscription.price)}.{" "}
+              {dialog === "reject"
+                ? "Tagihan kembali ke “menunggu pembayaran” dan alasan Anda tampil ke pemilik. Bukti yang dikirim tetap tersimpan."
+                : "Masa berlangganan toko langsung diperpanjang."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <Field>
-            <FieldLabel htmlFor={`note-${subscription.id}`}>Catatan (opsional)</FieldLabel>
+            <FieldLabel htmlFor={`text-${subscription.id}`}>{dialog === "reject" ? "Alasan penolakan" : "Catatan (opsional)"}</FieldLabel>
             <Input
-              id={`note-${subscription.id}`}
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="Transfer BCA 28/10, ref 1234"
+              id={`text-${subscription.id}`}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              placeholder={
+                dialog === "reject" ? "Dana belum masuk ke rekening per 29 Okt 16.00" : "Transfer BCA 28/10, ref 1234"
+              }
               maxLength={255}
+              required={dialog === "reject"}
             />
-            <FieldDescription>Referensi transfer atau keterangan lain.</FieldDescription>
+            <FieldDescription>
+              {dialog === "reject"
+                ? "Tulis yang bisa ditindaklanjuti pemilik, misalnya nominal atau rekening tujuan yang keliru."
+                : "Referensi transfer atau keterangan lain."}
+            </FieldDescription>
           </Field>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Batal</AlertDialogCancel>
-            <Button disabled={pending} onClick={handleConfirm}>
+            <Button
+              variant={dialog === "reject" ? "destructive" : "brand"}
+              disabled={pending}
+              onClick={dialog === "reject" ? handleReject : handleConfirm}
+            >
               {pending && <LoaderCircleIcon className="animate-spin" />}
-              Tandai lunas
+              {dialog === "reject" ? "Tolak klaim" : "Tandai lunas"}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

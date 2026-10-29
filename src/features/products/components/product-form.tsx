@@ -138,7 +138,7 @@ export function ProductForm({ categories, product }: Props) {
             inputMode="numeric"
             defaultValue={product?.minStock ?? ""}
             placeholder="Kosongkan bila tidak dipantau"
-            className="max-w-48 tabular-nums"
+            className="max-w-60 tabular-nums"
             aria-invalid={!!fieldError("minStock")}
           />
           {!fieldError("minStock") && (

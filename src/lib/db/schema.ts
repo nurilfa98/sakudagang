@@ -286,8 +286,11 @@ export const storePlanPrices = pgTable(
 );
 
 // Tagihan/langganan: satu baris per periode bayar. Harga = SNAPSHOT saat
-// tagihan dibuat. Status: PENDING (menunggu bayar), ACTIVE (lunas, periode
-// terisi), CANCELLED. "Habis" tidak disimpan: dihitung dari ends_at.
+// tagihan dibuat. Status: PENDING (menunggu bayar), CLAIMED (pemilik sudah
+// klik "saya sudah bayar" + unggah bukti, menunggu konfirmasi admin), ACTIVE
+// (lunas, periode terisi), CANCELLED. "Habis" tidak disimpan: dihitung dari
+// ends_at. Hanya ACTIVE yang memperpanjang masa toko; klaim bayar tidak
+// membuka akses apa pun (BUSINESS-FLOW §14.2).
 export const subscriptions = pgTable(
   "subscriptions",
   {
@@ -303,6 +306,13 @@ export const subscriptions = pgTable(
     paidAt: timestamptz("paid_at"),
     // Catatan: referensi transfer, keterangan admin, dll.
     note: varchar("note", { length: 255 }),
+    // Klaim bayar pemilik: waktu klik + key bukti transfer (lib/storage.ts).
+    claimedAt: timestamptz("claimed_at"),
+    proofKey: varchar("proof_key", { length: 255 }),
+    // Penolakan admin terakhir (bukti tidak cocok): waktu + alasan, tampil ke
+    // pemilik dan tersimpan sebagai jejak bila ada perselisihan.
+    rejectedAt: timestamptz("rejected_at"),
+    rejectionNote: varchar("rejection_note", { length: 255 }),
     createdById: userRef("created_by_id").notNull(),
     confirmedById: userRef("confirmed_by_id"),
     createdAt: createdAt(),
@@ -311,6 +321,6 @@ export const subscriptions = pgTable(
   (t) => [
     index("subscriptions_store_idx").on(t.storeId),
     index("subscriptions_status_idx").on(t.status),
-    check("subscriptions_status_check", sql`${t.status} IN ('PENDING', 'ACTIVE', 'CANCELLED')`),
+    check("subscriptions_status_check", sql`${t.status} IN ('PENDING', 'CLAIMED', 'ACTIVE', 'CANCELLED')`),
   ],
 );

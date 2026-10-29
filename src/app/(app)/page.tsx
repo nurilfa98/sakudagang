@@ -33,7 +33,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { StoreCards } from "@/features/stores/components/store-cards";
 import { listStores, summarizeStores, type StoreSummary } from "@/features/stores/queries";
-import { countPendingSubscriptions } from "@/features/subscriptions/queries";
+import { countPendingSubscriptions, type PendingCounts } from "@/features/subscriptions/queries";
 import { verifySession } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { ROLE_LABELS } from "@/lib/auth/roles";
@@ -95,7 +95,7 @@ async function HomeContent() {
 
 // Kotak ringkasan platform untuk Superadmin. Bentuknya sama dengan kotak dana
 // Pemilik, tetapi ikon & datanya tentang toko (klien) dan langganan (§14.4).
-function PlatformSummary({ summary, pendingInvoices }: { summary: StoreSummary; pendingInvoices: number }) {
+function PlatformSummary({ summary, pendingInvoices }: { summary: StoreSummary; pendingInvoices: PendingCounts }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <StatCard
@@ -125,12 +125,16 @@ function PlatformSummary({ summary, pendingInvoices }: { summary: StoreSummary; 
       <StatCard
         icon={<ReceiptIcon className="size-4" />}
         iconClassName="bg-sky-600 text-white dark:bg-sky-500"
-        title="Tagihan menunggu"
-        value={pendingInvoices}
-        description="Pembayaran yang perlu dicocokkan lalu ditandai lunas."
+        title="Perlu konfirmasi"
+        value={pendingInvoices.claimed}
+        description={
+          pendingInvoices.pending > 0
+            ? `Klaim bayar yang perlu dicocokkan lalu ditandai lunas; ${pendingInvoices.pending} tagihan lain masih menunggu pembayaran.`
+            : "Klaim bayar yang perlu dicocokkan dengan mutasi rekening lalu ditandai lunas."
+        }
         badge={
-          pendingInvoices > 0 ? (
-            <Button variant="link" size="sm" className="h-auto p-0" nativeButton={false} render={<Link href="/billing?status=PENDING" />}>
+          pendingInvoices.claimed + pendingInvoices.pending > 0 ? (
+            <Button variant="link" size="sm" className="h-auto p-0" nativeButton={false} render={<Link href="/billing" />}>
               Buka Tagihan
             </Button>
           ) : undefined

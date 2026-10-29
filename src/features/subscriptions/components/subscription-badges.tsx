@@ -18,6 +18,7 @@ export function StoreAccessBadge({ status }: { status: StoreAccessStatus }) {
 
 const SUBSCRIPTION_TONES: Record<SubscriptionStatus, Tone> = {
   PENDING: "warning",
+  CLAIMED: "active",
   ACTIVE: "success",
   CANCELLED: "pending",
 };
