@@ -13,7 +13,7 @@ Konvensi (lihat [ARCHITECTURE.md](./ARCHITECTURE.md) §1 & §5):
 - **Multi-tenant:** semua tabel di §2–§7 punya `store_id` → `stores.id` (NOT NULL) sebagai kolom kedua setelah `id`, dan setiap index pencarian diawali `store_id`. Tidak ditulis ulang di tiap tabel di bawah agar ringkas. Unique constraint yang disebut "unique" berlaku **per toko**: `(store_id, name)`, `(store_id, number)`, dst.
 - Status/enum disimpan `varchar` dengan daftar nilai di `features/*/constants.ts` (bukan enum PostgreSQL, agar menambah nilai tidak butuh migration).
 
-Status: **§0, §1, dan §2 sudah diimplementasi (migration `0000`–`0005`); §3–§7 masih draf.**
+Status: **§0, §1, §2, §3 (pembelian), dan §7 (penomoran) sudah diimplementasi (migration `0000`–`0005`, `0014`); §4–§6 masih draf.**
 
 ---
 

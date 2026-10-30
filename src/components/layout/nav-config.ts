@@ -21,6 +21,7 @@ import {
   ReceiptIcon,
   SettingsIcon,
   StoreIcon,
+  TruckIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -45,6 +46,13 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Utama",
     items: [{ title: "Beranda", href: "/", icon: HouseIcon, scope: "platform" }],
+  },
+  {
+    // Transaksi harian toko; Kasir & Penjualan menyusul di grup ini.
+    label: "Transaksi",
+    items: [
+      { title: "Pembelian", href: "/purchases", icon: TruckIcon, permission: "purchase:manage", scope: "store" },
+    ],
   },
   {
     label: "Master Data",

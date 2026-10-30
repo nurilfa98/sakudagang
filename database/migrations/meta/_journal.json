@@ -99,6 +99,13 @@
       "when": 1793267072553,
       "tag": "0013_payment_bank_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793361086751,
+      "tag": "0014_purchases",
+      "breakpoints": true
     }
   ]
 }

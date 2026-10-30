@@ -61,3 +61,4 @@ Lokasi folder diatur di `drizzle.config.ts` (`out: "./database/migrations"`).
 | `0003_users_role_column` | Kolom `users.role` (varchar + CHECK) menggantikan tabel `roles` & `user_roles`. *Manual:* salin role lama ke kolom baru sebelum tabel lama dihapus. |
 | `0004_users_phone` | Kolom `users.phone` (nomor WhatsApp, format `62…`) untuk undangan login. |
 | `0005_products` | Tabel `product_categories`, `products`, `stock_movements`. *Manual:* kategori awal untuk toko yang sudah ada. |
+| `0014_purchases` | Tabel `purchases`, `purchase_items` (pembelian / barang masuk) dan `document_sequences` (nomor BL-/JL-/SO- per toko per bulan). |

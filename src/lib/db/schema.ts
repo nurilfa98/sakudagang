@@ -14,9 +14,11 @@ import {
   bigint,
   boolean,
   check,
+  date,
   index,
   integer,
   pgTable,
+  primaryKey,
   smallint,
   timestamp,
   uniqueIndex,
@@ -216,6 +218,87 @@ export const stockMovements = pgTable(
       sql`${t.type} IN ('INITIAL', 'PURCHASE', 'PURCHASE_VOID', 'SALE', 'SALE_VOID', 'STOCK_TAKE')`,
     ),
   ],
+);
+
+// ---------------------------------------------------------------------------
+// Pembelian / barang masuk (docs/DATABASE-SCHEMA.md §3, BUSINESS-FLOW §4)
+// ---------------------------------------------------------------------------
+
+// Satu kali belanja stok. Tidak bisa diedit; salah input = batalkan (VOIDED)
+// lalu buat yang baru. Total = SNAPSHOT Σ item.subtotal.
+export const purchases = pgTable(
+  "purchases",
+  {
+    id: id(),
+    storeId: storeRef(),
+    // "BL-2026-10-0001", berjalan per toko per bulan (lib/document-number.ts).
+    number: varchar("number", { length: 20 }).notNull(),
+    periodYear: smallint("period_year").notNull(),
+    periodMonth: smallint("period_month").notNull(),
+    // Tanggal belanja; boleh lebih awal dari created_at bila dicatat belakangan.
+    date: date("date").notNull(),
+    note: varchar("note", { length: 500 }),
+    total: rupiah("total").notNull(),
+    // COMPLETED atau VOIDED (features/purchases/constants.ts).
+    status: varchar("status", { length: 20 }).notNull().default("COMPLETED"),
+    voidReason: varchar("void_reason", { length: 500 }),
+    voidedById: userRef("voided_by_id"),
+    voidedAt: timestamptz("voided_at"),
+    createdById: userRef("created_by_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("purchases_store_number_idx").on(t.storeId, t.number),
+    index("purchases_store_date_idx").on(t.storeId, t.date),
+    check("purchases_status_check", sql`${t.status} IN ('COMPLETED', 'VOIDED')`),
+  ],
+);
+
+// Baris pembelian. Nama barang & harga modal sebelum/sesudah disimpan sebagai
+// jejak perhitungan rata-rata tertimbang.
+export const purchaseItems = pgTable(
+  "purchase_items",
+  {
+    id: id(),
+    storeId: storeRef(),
+    purchaseId: varchar("purchase_id", { length: 36 })
+      .notNull()
+      .references(() => purchases.id),
+    productId: varchar("product_id", { length: 36 })
+      .notNull()
+      .references(() => products.id),
+    productName: varchar("product_name", { length: 100 }).notNull(),
+    qty: integer("qty").notNull(),
+    // Harga beli per satuan.
+    unitCost: rupiah("unit_cost").notNull(),
+    subtotal: rupiah("subtotal").notNull(),
+    costPriceBefore: rupiah("cost_price_before").notNull(),
+    costPriceAfter: rupiah("cost_price_after").notNull(),
+    // Harga jual baru yang diisi saat restock; null = harga jual tidak diubah.
+    newSellingPrice: rupiah("new_selling_price"),
+  },
+  (t) => [
+    // Satu barang satu baris per pembelian.
+    uniqueIndex("purchase_items_purchase_product_idx").on(t.purchaseId, t.productId),
+    index("purchase_items_product_idx").on(t.storeId, t.productId),
+    check("purchase_items_qty_check", sql`${t.qty} > 0`),
+  ],
+);
+
+// Penomoran dokumen berjalan per toko, per jenis (BL/JL/SO), per bulan.
+// Diambil dengan INSERT … ON CONFLICT DO UPDATE … RETURNING di transaksi yang
+// sama dengan dokumennya, sehingga dua penyimpanan bersamaan tidak mendapat
+// nomor kembar (lib/document-number.ts).
+export const documentSequences = pgTable(
+  "document_sequences",
+  {
+    storeId: storeRef(),
+    prefix: varchar("prefix", { length: 5 }).notNull(),
+    periodYear: smallint("period_year").notNull(),
+    periodMonth: smallint("period_month").notNull(),
+    lastValue: integer("last_value").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.storeId, t.prefix, t.periodYear, t.periodMonth] })],
 );
 
 // ---------------------------------------------------------------------------

@@ -25,6 +25,8 @@ kode jadi, tabel "sumber kebenaran" di bawah diisi dengan nama file-nya.
 | Masa gratis, tenggang, kunci akses toko (§14) | `src/lib/subscription-access.ts`, `src/lib/auth/dal.ts` |
 | Harga paket, perpanjangan periode (§14) | `src/features/subscriptions/service.ts`, `src/features/subscriptions/actions.ts` |
 | Rumus harga modal rata-rata, laba | `src/features/products/service.ts`, `src/features/sales/service.ts` |
+| Pembelian, pembatalan & hitung ulang harga modal (§4, §8) | `src/features/purchases/actions.ts`, `src/features/products/service.ts` (`replayAverageCost`) |
+| Nomor dokumen BL-/JL-/SO- | `src/lib/document-number.ts` |
 | Daftar & arti status | `src/features/*/constants.ts` |
 | Rumus laporan | `src/features/reports/service.ts` |
 
@@ -200,6 +202,8 @@ mengisi stok awal + harga modal awal. Ini dicatat sebagai mutasi stok jenis
 
 ## 4. Pembelian (barang masuk)
 
+Status: **diimplementasi 30 Oktober 2026** (menu Transaksi → Pembelian).
+
 Pemilik mencatat satu kali belanja: tanggal, catatan (mis. "Belanja di
 grosir Pak Haji"), dan daftar barang dengan **qty** dan **harga beli per
 satuan**. Total pembelian = Σ harga beli × qty = **modal keluar** pada tanggal
@@ -230,9 +234,11 @@ sebagai jejak.
 **Mengubah/membatalkan pembelian.** Pembelian yang sudah tersimpan **tidak bisa
 diedit**; bila salah, pemilik membatalkannya (status `VOIDED`). Pembatalan
 membuat mutasi stok `PURCHASE_VOID` −qty dan **menghitung ulang harga
-modal** dari riwayat (lihat §8). Pembatalan ditolak bila akan membuat stok
-negatif melebihi yang terjual sejak pembelian itu—pesan: "Barang dari
-pembelian ini sudah terjual, buat penyesuaian lewat stok opname."
+modal** dari riwayat (lihat §8). Pembatalan ditolak bila stok salah satu
+barang saat ini lebih kecil dari qty pembelian itu (stok akan minus, artinya
+barangnya sudah terjual)—pesan: "<Barang> dari pembelian ini sudah terjual,
+buat penyesuaian lewat stok opname." Harga jual yang sempat diubah lewat
+pembelian **tidak** dikembalikan saat dibatalkan; ubah manual bila perlu.
 
 Biaya belanja di luar harga barang (bensin, parkir, ongkos angkut) **bukan**
 bagian pembelian; dicatat di Pengeluaran (§7).
