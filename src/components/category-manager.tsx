@@ -1,6 +1,10 @@
-// Kelola kategori barang: tambah, ubah nama, hapus (bila tidak dipakai).
-// Satu Client Component kecil karena interaksinya sederhana dan datanya
-// sedikit (belasan kategori per toko).
+// Kelola kategori (barang, pengeluaran): tambah, ubah nama, hapus (bila
+// tidak dipakai). Satu Client Component kecil karena interaksinya sederhana
+// dan datanya sedikit (belasan kategori per toko).
+//
+// Server Action-nya diberikan halaman lewat props, sehingga komponen ini
+// dipakai lintas fitur (karena itu letaknya di components/). Setiap action
+// tetap memeriksa permission & toko sendiri.
 
 "use client";
 
@@ -10,17 +14,32 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { createCategory, deleteCategory, renameCategory } from "@/features/products/actions";
-import type { CategoryItem } from "@/features/products/queries";
 import { notify } from "@/lib/notify";
+import type { ActionResult } from "@/types/action-result";
 
-export function CategoryManager({ categories }: { categories: CategoryItem[] }) {
+export type ManagedCategory = { id: string; name: string; usageCount: number };
+
+export type CategoryActions = {
+  create: (prevState: ActionResult | undefined, formData: FormData) => Promise<ActionResult>;
+  rename: (categoryId: string, name: string) => Promise<ActionResult>;
+  remove: (categoryId: string) => Promise<ActionResult>;
+};
+
+export function CategoryManager({
+  categories,
+  actions,
+  usageLabel,
+}: {
+  categories: ManagedCategory[];
+  actions: CategoryActions;
+  usageLabel: string; // satuan pemakaian: "barang", "pengeluaran"
+}) {
   return (
     <div className="flex max-w-xl flex-col gap-4">
-      <AddCategoryForm />
+      <AddCategoryForm create={actions.create} />
       <ul className="divide-y rounded-lg border bg-card">
         {categories.map((category) => (
-          <CategoryRow key={category.id} category={category} />
+          <CategoryRow key={category.id} category={category} actions={actions} usageLabel={usageLabel} />
         ))}
         {categories.length === 0 && (
           <li className="p-6 text-center text-sm text-muted-foreground">Belum ada kategori.</li>
@@ -32,13 +51,13 @@ export function CategoryManager({ categories }: { categories: CategoryItem[] }) 
 
 // Mengganti `key` membuat React membuat ulang form dari nol (isian & state
 // hasil action ikut kosong) setelah kategori berhasil ditambahkan.
-function AddCategoryForm() {
+function AddCategoryForm({ create }: { create: CategoryActions["create"] }) {
   const [formKey, setFormKey] = useState(0);
-  return <AddForm key={formKey} onCreated={() => setFormKey((key) => key + 1)} />;
+  return <AddForm key={formKey} create={create} onCreated={() => setFormKey((key) => key + 1)} />;
 }
 
-function AddForm({ onCreated }: { onCreated: () => void }) {
-  const [state, formAction, pending] = useActionState(createCategory, undefined);
+function AddForm({ create, onCreated }: { create: CategoryActions["create"]; onCreated: () => void }) {
+  const [state, formAction, pending] = useActionState(create, undefined);
   const error = state && !state.success ? state : undefined;
 
   useEffect(() => {
@@ -70,7 +89,15 @@ function AddForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-function CategoryRow({ category }: { category: CategoryItem }) {
+function CategoryRow({
+  category,
+  actions,
+  usageLabel,
+}: {
+  category: ManagedCategory;
+  actions: CategoryActions;
+  usageLabel: string;
+}) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(category.name);
   const [error, setError] = useState<string>();
@@ -78,7 +105,7 @@ function CategoryRow({ category }: { category: CategoryItem }) {
 
   function save() {
     startSaving(async () => {
-      const result = await renameCategory(category.id, name);
+      const result = await actions.rename(category.id, name);
       if (!result.success) {
         setError(result.fieldErrors?.name?.[0] ?? result.message);
         return;
@@ -96,7 +123,7 @@ function CategoryRow({ category }: { category: CategoryItem }) {
   }
 
   async function remove() {
-    const result = await deleteCategory(category.id);
+    const result = await actions.remove(category.id);
     if (!result.success) notify.error(result.message);
     else notify.success("Kategori dihapus.");
   }
@@ -130,17 +157,19 @@ function CategoryRow({ category }: { category: CategoryItem }) {
         <>
           <div className="flex-1">
             <p className="font-medium">{category.name}</p>
-            <p className="text-xs text-muted-foreground">{category.productCount} barang</p>
+            <p className="text-xs text-muted-foreground">
+              {category.usageCount} {usageLabel}
+            </p>
           </div>
           <Button size="icon" variant="ghost" onClick={() => setEditing(true)} aria-label={`Ubah ${category.name}`}>
             <PencilIcon />
           </Button>
-          {category.productCount === 0 && (
+          {category.usageCount === 0 && (
             <ConfirmButton
               label=""
               variant="ghost"
               dialogTitle={`Hapus kategori ${category.name}?`}
-              dialogDescription="Kategori ini belum dipakai barang mana pun."
+              dialogDescription={`Kategori ini belum dipakai ${usageLabel} mana pun.`}
               confirmLabel="Hapus"
               onConfirm={remove}
               icon={<Trash2Icon />}

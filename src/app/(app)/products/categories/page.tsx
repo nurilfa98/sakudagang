@@ -7,7 +7,8 @@ import { Suspense } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CategoryManager } from "@/features/products/components/category-manager";
+import { CategoryManager } from "@/components/category-manager";
+import { createCategory, deleteCategory, renameCategory } from "@/features/products/actions";
 import { listCategories } from "@/features/products/queries";
 import { requireStore } from "@/lib/auth/dal";
 
@@ -38,5 +39,11 @@ export default function CategoriesPage() {
 async function CategoriesContent() {
   const actor = await requireStore("product:manage");
   const categories = await listCategories(actor.storeId);
-  return <CategoryManager categories={categories} />;
+  return (
+    <CategoryManager
+      categories={categories.map((category) => ({ ...category, usageCount: category.productCount }))}
+      actions={{ create: createCategory, rename: renameCategory, remove: deleteCategory }}
+      usageLabel="barang"
+    />
+  );
 }

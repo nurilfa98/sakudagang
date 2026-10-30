@@ -15,14 +15,20 @@
 //   saat ia sudah masuk ke sebuah toko dari beranda.
 
 import {
+  ChartColumnIcon,
+  ClipboardListIcon,
   CreditCardIcon,
+  HandCoinsIcon,
   HouseIcon,
   PackageIcon,
   ReceiptIcon,
+  ReceiptTextIcon,
   SettingsIcon,
+  ShoppingCartIcon,
   StoreIcon,
   TruckIcon,
   UsersIcon,
+  WalletIcon,
   type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/lib/auth/permissions";
@@ -48,15 +54,28 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [{ title: "Beranda", href: "/", icon: HouseIcon, scope: "platform" }],
   },
   {
-    // Transaksi harian toko; Kasir & Penjualan menyusul di grup ini.
+    // Transaksi harian toko.
     label: "Transaksi",
     items: [
+      { title: "Kasir", href: "/cashier", icon: ShoppingCartIcon, permission: "sale:create", scope: "store" },
+      // Pemilik: semua transaksi; Kasir: transaksinya sendiri.
+      { title: "Penjualan", href: "/sales", icon: ReceiptTextIcon, permission: "sale:create", scope: "store" },
+      // Piutang pelanggan & pelunasan (Pemilik & Kasir).
+      { title: "Bon", href: "/credits", icon: HandCoinsIcon, permission: "credit:settle", scope: "store" },
       { title: "Pembelian", href: "/purchases", icon: TruckIcon, permission: "purchase:manage", scope: "store" },
+      { title: "Pengeluaran", href: "/expenses", icon: WalletIcon, permission: "expense:manage", scope: "store" },
     ],
   },
   {
+    label: "Laporan",
+    items: [{ title: "Laporan", href: "/reports", icon: ChartColumnIcon, permission: "report:view", scope: "store" }],
+  },
+  {
     label: "Master Data",
-    items: [{ title: "Barang", href: "/products", icon: PackageIcon, permission: "product:view", scope: "store" }],
+    items: [
+      { title: "Barang", href: "/products", icon: PackageIcon, permission: "product:view", scope: "store" },
+      { title: "Stok Opname", href: "/stock-takes", icon: ClipboardListIcon, permission: "stock-take:manage", scope: "store" },
+    ],
   },
   {
     label: "Administrasi",

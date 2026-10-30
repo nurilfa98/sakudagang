@@ -285,6 +285,259 @@ export const purchaseItems = pgTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// Penjualan / kasir & pelanggan (docs/DATABASE-SCHEMA.md §4, BUSINESS-FLOW §5–§6)
+// ---------------------------------------------------------------------------
+
+// Pelanggan, terutama untuk bon (piutang). Nama tidak unik: bisa ada dua
+// "Bu Sri"; UI memperingatkan nama sama. Kasir boleh menambah dari layar kasir.
+export const customers = pgTable(
+  "customers",
+  {
+    id: id(),
+    storeId: storeRef(),
+    name: varchar("name", { length: 100 }).notNull(),
+    // Nomor WhatsApp format 62… (lib/phone.ts), opsional.
+    phone: varchar("phone", { length: 20 }),
+    note: varchar("note", { length: 500 }),
+    // false = pemilik menandai pelanggan ini tidak boleh bon.
+    allowCredit: boolean("allow_credit").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("customers_store_name_idx").on(t.storeId, t.name)],
+);
+
+// Satu transaksi kasir. Tidak bisa diedit; salah input = batalkan (VOIDED).
+// total, total_cost (HPP), dan total_gross_profit disimpan agar laporan
+// cukup SUM satu tabel (DATABASE-SCHEMA §10); nilainya snapshot.
+export const sales = pgTable(
+  "sales",
+  {
+    id: id(),
+    storeId: storeRef(),
+    // "JL-2026-10-0001", berjalan per toko per bulan (lib/document-number.ts).
+    number: varchar("number", { length: 20 }).notNull(),
+    periodYear: smallint("period_year").notNull(),
+    periodMonth: smallint("period_month").notNull(),
+    // Tanggal kalender menurut zona waktu toko saat disimpan: kunci laporan
+    // harian & aturan "Kasir membatalkan hanya di hari yang sama".
+    date: date("date").notNull(),
+    // CASH, QRIS, CREDIT (bon) — features/sales/constants.ts.
+    paymentMethod: varchar("payment_method", { length: 10 }).notNull(),
+    customerId: varchar("customer_id", { length: 36 }).references(() => customers.id),
+    total: rupiah("total").notNull(),
+    totalCost: rupiah("total_cost").notNull(),
+    totalGrossProfit: rupiah("total_gross_profit").notNull(),
+    // Hanya CASH: uang dari pembeli; kembalian = cash_received − total.
+    cashReceived: rupiah("cash_received"),
+    // PAID (tunai/QRIS langsung lunas) atau UNPAID (bon, menjadi piutang).
+    paymentStatus: varchar("payment_status", { length: 15 }).notNull(),
+    // COMPLETED atau VOIDED.
+    status: varchar("status", { length: 15 }).notNull().default("COMPLETED"),
+    voidReason: varchar("void_reason", { length: 500 }),
+    voidedById: userRef("voided_by_id"),
+    voidedAt: timestamptz("voided_at"),
+    // Kasir yang mencatat; dasar aturan "batalkan miliknya sendiri".
+    createdById: userRef("created_by_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("sales_store_number_idx").on(t.storeId, t.number),
+    index("sales_store_date_idx").on(t.storeId, t.date, t.status),
+    index("sales_store_customer_idx").on(t.storeId, t.customerId, t.paymentStatus),
+    index("sales_created_by_idx").on(t.createdById),
+    check("sales_payment_method_check", sql`${t.paymentMethod} IN ('CASH', 'QRIS', 'CREDIT')`),
+    check("sales_payment_status_check", sql`${t.paymentStatus} IN ('PAID', 'UNPAID')`),
+    check("sales_status_check", sql`${t.status} IN ('COMPLETED', 'VOIDED')`),
+    // Bon wajib punya pelanggan.
+    check("sales_credit_customer_check", sql`${t.paymentMethod} <> 'CREDIT' OR ${t.customerId} IS NOT NULL`),
+  ],
+);
+
+// Baris penjualan: SNAPSHOT harga & nama saat transaksi, bukan referensi ke
+// master, agar laporan lama tidak berubah saat harga/nama barang diganti.
+// cost_price tidak pernah dikirim ke Kasir.
+export const saleItems = pgTable(
+  "sale_items",
+  {
+    id: id(),
+    storeId: storeRef(),
+    saleId: varchar("sale_id", { length: 36 })
+      .notNull()
+      .references(() => sales.id),
+    productId: varchar("product_id", { length: 36 })
+      .notNull()
+      .references(() => products.id),
+    productName: varchar("product_name", { length: 100 }).notNull(),
+    qty: integer("qty").notNull(),
+    sellingPrice: rupiah("selling_price").notNull(),
+    costPrice: rupiah("cost_price").notNull(),
+    subtotal: rupiah("subtotal").notNull(),
+    grossProfit: rupiah("gross_profit").notNull(),
+  },
+  (t) => [
+    uniqueIndex("sale_items_sale_product_idx").on(t.saleId, t.productId),
+    // Barang terlaris & riwayat jual per barang.
+    index("sale_items_product_idx").on(t.storeId, t.productId),
+    check("sale_items_qty_check", sql`${t.qty} > 0`),
+  ],
+);
+
+// Pelunasan bon (BUSINESS-FLOW §6): satu baris = satu kali bayar untuk SATU
+// penjualan bon, boleh sebagian. Σ pelunasan COMPLETED ≥ sales.total →
+// sales.payment_status = PAID. Uang masuk dihitung pada `date` (tanggal uang
+// diterima), bukan omset (omset sudah dihitung saat jual). Salah catat =
+// dibatalkan (VOIDED), tidak dihapus; selama ada pelunasan COMPLETED,
+// penjualannya tidak bisa dibatalkan.
+export const creditPayments = pgTable(
+  "credit_payments",
+  {
+    id: id(),
+    storeId: storeRef(),
+    saleId: varchar("sale_id", { length: 36 })
+      .notNull()
+      .references(() => sales.id),
+    // Disalin dari sales.customer_id agar riwayat per pelanggan tidak perlu join.
+    customerId: varchar("customer_id", { length: 36 })
+      .notNull()
+      .references(() => customers.id),
+    date: date("date").notNull(),
+    amount: rupiah("amount").notNull(),
+    // CASH atau QRIS.
+    paymentMethod: varchar("payment_method", { length: 10 }).notNull(),
+    // COMPLETED atau VOIDED.
+    status: varchar("status", { length: 15 }).notNull().default("COMPLETED"),
+    voidReason: varchar("void_reason", { length: 500 }),
+    voidedById: userRef("voided_by_id"),
+    voidedAt: timestamptz("voided_at"),
+    createdById: userRef("created_by_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("credit_payments_sale_idx").on(t.storeId, t.saleId),
+    index("credit_payments_customer_idx").on(t.storeId, t.customerId),
+    index("credit_payments_date_idx").on(t.storeId, t.date),
+    check("credit_payments_amount_check", sql`${t.amount} > 0`),
+    check("credit_payments_method_check", sql`${t.paymentMethod} IN ('CASH', 'QRIS')`),
+    check("credit_payments_status_check", sql`${t.status} IN ('COMPLETED', 'VOIDED')`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Pengeluaran operasional (docs/DATABASE-SCHEMA.md §5, BUSINESS-FLOW §7)
+// ---------------------------------------------------------------------------
+
+// Kategori pengeluaran per toko. Diisi awal saat toko dibuat
+// (lib/store-defaults.ts), pemilik bisa menambah/mengubah.
+export const expenseCategories = pgTable(
+  "expense_categories",
+  {
+    id: id(),
+    storeId: storeRef(),
+    name: varchar("name", { length: 50 }).notNull(),
+    sortOrder: smallint("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("expense_categories_store_name_idx").on(t.storeId, t.name)],
+);
+
+// Biaya di luar belanja stok (listrik, plastik, bensin, gaji). Mengurangi
+// laba bersih pada `date`. Bukan transaksi stok, jadi boleh diedit/dihapus
+// (hard delete) oleh Pemilik tanpa efek berantai.
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: id(),
+    storeId: storeRef(),
+    date: date("date").notNull(),
+    categoryId: varchar("category_id", { length: 36 })
+      .notNull()
+      .references(() => expenseCategories.id),
+    amount: rupiah("amount").notNull(),
+    note: varchar("note", { length: 500 }),
+    createdById: userRef("created_by_id").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("expenses_store_date_idx").on(t.storeId, t.date),
+    index("expenses_category_idx").on(t.categoryId),
+    check("expenses_amount_check", sql`${t.amount} > 0`),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Stok opname (docs/DATABASE-SCHEMA.md §6, BUSINESS-FLOW §9)
+// ---------------------------------------------------------------------------
+
+// Pencocokan stok fisik dengan sistem. DRAFT (sedang dihitung, hanya satu per
+// toko) → COMPLETED (stok diluruskan, penyusutan dicatat; tidak bisa diubah).
+export const stockTakes = pgTable(
+  "stock_takes",
+  {
+    id: id(),
+    storeId: storeRef(),
+    // "SO-2026-10-0001", berjalan per toko per bulan (lib/document-number.ts).
+    number: varchar("number", { length: 20 }).notNull(),
+    // Saat draf = tanggal dibuat; diisi ulang dengan tanggal selesai.
+    date: date("date").notNull(),
+    status: varchar("status", { length: 10 }).notNull().default("DRAFT"),
+    note: varchar("note", { length: 500 }),
+    // Σ |selisih kurang| × harga modal, diisi saat COMPLETED. Snapshot untuk
+    // laporan (mengurangi laba bersih pada `date`).
+    totalShrinkage: rupiah("total_shrinkage"),
+    completedById: userRef("completed_by_id"),
+    completedAt: timestamptz("completed_at"),
+    createdById: userRef("created_by_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("stock_takes_store_number_idx").on(t.storeId, t.number),
+    // Hanya boleh ada satu opname DRAFT per toko.
+    uniqueIndex("stock_takes_store_draft_idx").on(t.storeId).where(sql`${t.status} = 'DRAFT'`),
+    index("stock_takes_store_date_idx").on(t.storeId, t.date),
+    check("stock_takes_status_check", sql`${t.status} IN ('DRAFT', 'COMPLETED')`),
+  ],
+);
+
+// Satu baris per barang aktif saat opname dibuat. physical_qty null = belum
+// dihitung → tidak diproses saat diselesaikan.
+export const stockTakeItems = pgTable(
+  "stock_take_items",
+  {
+    id: id(),
+    storeId: storeRef(),
+    stockTakeId: varchar("stock_take_id", { length: 36 })
+      .notNull()
+      .references(() => stockTakes.id),
+    productId: varchar("product_id", { length: 36 })
+      .notNull()
+      .references(() => products.id),
+    productName: varchar("product_name", { length: 100 }).notNull(),
+    // Diisi saat draf dibuat; DITIMPA dengan products.stock terkini saat
+    // diselesaikan (penjualan tetap berjalan selama opname).
+    systemQty: integer("system_qty").notNull(),
+    physicalQty: integer("physical_qty"),
+    // physical_qty − system_qty, final saat COMPLETED.
+    difference: integer("difference"),
+    // DAMAGED, EXPIRED, LOST, PERSONAL_USE, MISCOUNT, OTHER; wajib bila selisih ≠ 0.
+    reason: varchar("reason", { length: 20 }),
+    note: varchar("note", { length: 255 }),
+    // Snapshot saat COMPLETED, dasar penyusutan.
+    costPrice: rupiah("cost_price"),
+    // |selisih| × harga modal bila selisih < 0, selain itu 0.
+    shrinkageValue: rupiah("shrinkage_value"),
+  },
+  (t) => [
+    uniqueIndex("stock_take_items_take_product_idx").on(t.stockTakeId, t.productId),
+    check(
+      "stock_take_items_reason_check",
+      sql`${t.reason} IS NULL OR ${t.reason} IN ('DAMAGED', 'EXPIRED', 'LOST', 'PERSONAL_USE', 'MISCOUNT', 'OTHER')`,
+    ),
+  ],
+);
+
 // Penomoran dokumen berjalan per toko, per jenis (BL/JL/SO), per bulan.
 // Diambil dengan INSERT … ON CONFLICT DO UPDATE … RETURNING di transaksi yang
 // sama dengan dokumennya, sehingga dua penyimpanan bersamaan tidak mendapat

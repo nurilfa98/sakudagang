@@ -13,7 +13,7 @@ Konvensi (lihat [ARCHITECTURE.md](./ARCHITECTURE.md) §1 & §5):
 - **Multi-tenant:** semua tabel di §2–§7 punya `store_id` → `stores.id` (NOT NULL) sebagai kolom kedua setelah `id`, dan setiap index pencarian diawali `store_id`. Tidak ditulis ulang di tiap tabel di bawah agar ringkas. Unique constraint yang disebut "unique" berlaku **per toko**: `(store_id, name)`, `(store_id, number)`, dst.
 - Status/enum disimpan `varchar` dengan daftar nilai di `features/*/constants.ts` (bukan enum PostgreSQL, agar menambah nilai tidak butuh migration).
 
-Status: **§0, §1, §2, §3 (pembelian), dan §7 (penomoran) sudah diimplementasi (migration `0000`–`0005`, `0014`); §4–§6 masih draf.**
+Status: **§0–§7 sudah diimplementasi (migration `0000`–`0005`, `0014`–`0018`).**
 
 ---
 
@@ -232,11 +232,14 @@ Index `(product_id)` untuk "barang terlaris". Unique `(sale_id, product_id)`.
 | sale_id | FK → sales (payment_method CREDIT) | Satu pelunasan → satu bon. |
 | date | date | Tanggal uang diterima (dasar "uang masuk"). |
 | amount | bigint > 0 | Boleh sebagian. Σ amount ≤ sales.total (dicek di action). |
+| customer_id | FK → customers | Disalin dari penjualan agar riwayat per pelanggan tanpa join. |
 | payment_method | varchar(10) | `CASH`, `QRIS`. |
+| status | varchar(15) | `COMPLETED`, `VOIDED`. Salah catat = dibatalkan, bukan dihapus. |
+| void_reason, voided_by_id, voided_at | | |
 | created_by_id | FK | |
 | created_at | | |
 
-Sisa bon = `sales.total − Σ credit_payments.amount`; bila 0 → `payment_status = PAID`. Sisa tidak disimpan, dihitung.
+Sisa bon = `sales.total − Σ credit_payments.amount` (hanya `COMPLETED`); bila 0 → `payment_status = PAID`, pembatalan pelunasan mengembalikannya ke `UNPAID`. Sisa tidak disimpan, dihitung.
 
 ---
 

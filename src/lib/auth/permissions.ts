@@ -27,7 +27,8 @@ export const PERMISSIONS = [
   "sale:void-own", // membatalkan penjualan miliknya, hari yang sama
   "sale:void-all", // membatalkan penjualan siapa pun, kapan pun
   "credit:settle", // mencatat pelunasan bon pelanggan
-  "customer:manage", // tambah/ubah data pelanggan
+  "customer:manage", // tambah & lihat pelanggan (Kasir juga, dari layar kasir)
+  "customer:edit", // ubah data pelanggan & tandai "tidak boleh bon" (bukan untuk Kasir)
   "product:view", // daftar barang, harga jual, stok
   "product:view-cost", // melihat harga modal & laba (bukan untuk Kasir)
   "product:manage", // master barang & kategori

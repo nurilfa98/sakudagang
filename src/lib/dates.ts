@@ -54,6 +54,17 @@ export function formatDateTime(date: Date) {
   return dateTimeFormat.format(date);
 }
 
+const timeFormat = new Intl.DateTimeFormat("id-ID", {
+  timeZone,
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+// "15.30" (jam transaksi di daftar penjualan satu hari)
+export function formatTime(date: Date) {
+  return timeFormat.format(date);
+}
+
 // Tanggal kalender menurut zona waktu perusahaan, "2026-10-24". Format ini
 // sama dengan <input type="date"> dan kolom PostgreSQL bertipe date, sehingga
 // bisa dibandingkan langsung sebagai teks.

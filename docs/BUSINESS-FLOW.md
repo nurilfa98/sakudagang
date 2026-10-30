@@ -16,10 +16,11 @@ Pemilik dan Kasir terikat pada tepat satu toko, dan hanya melihat data toko
 itu. Superadmin (pengelola SakuDagang) membuat toko beserta akun Pemiliknya.
 Lintas toko tidak ada: pemilik dua toko memakai dua akun (multi-cabang = v2).
 
-Status: **draf v1, disepakati 28 Oktober 2026, belum diimplementasi.** Setelah
-kode jadi, tabel "sumber kebenaran" di bawah diisi dengan nama file-nya.
+Status: **v1 disepakati 28 Oktober 2026; seluruh alur §3–§10 diimplementasi
+29–30 Oktober 2026.** Sumber kebenaran tiap aturan ada di tabel berikut; bila
+kode dan dokumen berbeda, perbaiki salah satunya.
 
-| Aturan | File (rencana) |
+| Aturan | File |
 |---|---|
 | Hak akses per peran | `src/lib/auth/permissions.ts` |
 | Masa gratis, tenggang, kunci akses toko (§14) | `src/lib/subscription-access.ts`, `src/lib/auth/dal.ts` |
@@ -27,8 +28,12 @@ kode jadi, tabel "sumber kebenaran" di bawah diisi dengan nama file-nya.
 | Rumus harga modal rata-rata, laba | `src/features/products/service.ts`, `src/features/sales/service.ts` |
 | Pembelian, pembatalan & hitung ulang harga modal (§4, §8) | `src/features/purchases/actions.ts`, `src/features/products/service.ts` (`replayAverageCost`) |
 | Nomor dokumen BL-/JL-/SO- | `src/lib/document-number.ts` |
+| Penjualan: harga per transaksi, siapa boleh membatalkan (§5) | `src/features/sales/service.ts`, `src/features/sales/actions.ts` |
+| Pelunasan bon, sisa piutang (§6) | `src/features/credits/service.ts`, `src/features/credits/actions.ts` |
+| Pengeluaran & kategorinya (§7) | `src/features/expenses/actions.ts` |
+| Stok opname: selisih, alasan wajib, penyusutan (§9) | `src/features/stock-takes/service.ts`, `src/features/stock-takes/actions.ts` |
 | Daftar & arti status | `src/features/*/constants.ts` |
-| Rumus laporan | `src/features/reports/service.ts` |
+| Rumus laporan & dashboard (§10) | `src/features/reports/service.ts`, `src/features/reports/queries.ts` |
 
 ---
 
@@ -80,6 +85,8 @@ Tiga peran: **Superadmin**, **Pemilik**, dan **Kasir**.
 | Stok opname | ✓ | ✓ | |
 | Laporan & dashboard | ✓ | ✓ | |
 | Pelanggan (data bon) | ✓ | ✓ | ✓ tambah & lihat |
+| Ubah pelanggan, tandai "tidak boleh bon" | ✓ | ✓ | |
+| Membatalkan pelunasan bon | ✓ semua | ✓ semua | ✓ hanya catatannya, hari yang sama |
 | Pengguna: buat/nonaktifkan **Kasir**, reset password | ✓ | ✓ | |
 | Pengguna: buat/nonaktifkan **Pemilik**, reset password | ✓ | | |
 | **Profile**: ubah nama, email, WhatsApp diri sendiri (menu user di navbar) | ✓ | ✓ | ✓ |
@@ -152,7 +159,7 @@ Permission (format `<sumber-daya>:<aksi>`), rencana:
 
 ```
 sale:create          sale:void-own             sale:void-all
-credit:settle        customer:manage
+credit:settle        customer:manage           customer:edit
 product:view         product:manage            product:view-cost
 purchase:manage      expense:manage            stock-take:manage
 report:view          user:manage-cashier       user:manage-owner
@@ -247,6 +254,10 @@ bagian pembelian; dicatat di Pengeluaran (§7).
 
 ## 5. Kasir (penjualan)
 
+Status: **diimplementasi 30 Oktober 2026** (menu Transaksi → Kasir & Penjualan;
+pelanggan bisa ditambah dari layar kasir). Riwayat penjualan menampilkan satu hari (bawaan
+hari ini); Kasir hanya melihat transaksinya sendiri, Pemilik semua beserta laba.
+
 Layar utama Kasir, dioptimalkan untuk HP: cari barang (nama), tambah ke
 keranjang, ubah qty, pilih metode bayar, simpan. Satu transaksi = satu
 penjualan dengan nomor `JL-YYYY-MM-NNNN`.
@@ -298,6 +309,12 @@ lalu buat yang baru.
 
 ## 6. Bon (piutang pelanggan)
 
+Status: **diimplementasi 30 Oktober 2026** (menu Transaksi → Bon; pelunasan
+juga bisa dari detail penjualan). Pelunasan yang salah dicatat **dibatalkan**
+(status `VOIDED` + alasan), tidak dihapus: Pemilik kapan pun, Kasir hanya
+pelunasan yang ia catat sendiri pada hari yang sama. Halaman pelanggan punya
+tombol "Tagih via WhatsApp" (click-to-chat dari HP pengguna, berisi sisa bon).
+
 | Hal | Aturan |
 |---|---|
 | Pelanggan | Nama (wajib), nomor HP (opsional), catatan. Kasir boleh menambah pelanggan baru dari layar kasir. |
@@ -310,6 +327,10 @@ lalu buat yang baru.
 ---
 
 ## 7. Pengeluaran operasional
+
+Status: **diimplementasi 30 Oktober 2026** (menu Transaksi → Pengeluaran; kategori
+di `/expenses/categories`, kategori awal diisi saat toko dibuat dan oleh
+migration untuk toko lama).
 
 Pemilik mencatat: tanggal, kategori, nominal, keterangan. Kategori awal diisi
 migration: **Listrik & air, Transport, Kemasan/plastik, Gaji, Sewa, Lainnya**;
@@ -353,6 +374,12 @@ mengubah harga modal.
 
 ## 9. Stok opname (akhir bulan)
 
+Status: **diimplementasi 30 Oktober 2026** (menu Master Data → Stok Opname).
+Draf yang belum diselesaikan boleh **dihapus** (stok belum berubah). Barang
+yang dibuat setelah draf dimulai tidak masuk draf itu. Selama draf, layar
+hitung menampilkan stok sistem **terkini**, sama dengan angka yang dipakai saat
+diselesaikan.
+
 Pemilik mencocokkan stok fisik dengan sistem. Dilakukan saat warung tutup
 agar angkanya tidak bergeser.
 
@@ -379,6 +406,10 @@ Penjualan dan pembelian **tetap boleh** berjalan selama opname `DRAFT`
 ---
 
 ## 10. Laporan & rumus
+
+Status: **diimplementasi 30 Oktober 2026** (menu Laporan: harian, bulanan,
+tahunan; unduh Excel untuk bulanan & tahunan; dashboard di beranda Pemilik
+dengan periode bulan berjalan; untuk bulan lain buka laporan bulanan).
 
 Semua tanggal memakai zona waktu warung (`APP_TIMEZONE`). Penjualan yang
 dibatalkan dan pembelian yang dibatalkan **tidak** dihitung.

@@ -17,8 +17,3 @@ export function savingsPercent(price: number, months: PlanMonths, monthlyPrice: 
   if (price >= full) return null;
   return Math.round(((full - price) / full) * 100);
 }
-
-// Link WhatsApp ke admin dengan pesan konfirmasi pembayaran yang sudah terisi.
-export function whatsAppLink(phone: string, text: string) {
-  return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
-}

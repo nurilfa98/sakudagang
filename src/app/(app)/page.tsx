@@ -8,10 +8,9 @@
 // (docs/BUSINESS-FLOW.md §2):
 // - Superadmin : beranda PLATFORM. Kotak ringkasan klien (jumlah toko aktif,
 //   nonaktif, pengguna) lalu kartu per toko dengan tombol masuk ke menu toko.
-// - Pemilik    : PRATINJAU dashboard pemisahan dana (§10.4) dengan angka nol,
-//   agar tata letak dan warna bisa dilihat sebelum fitur penjualan ada. Angka
-//   sungguhan menyusul dari features/reports/queries.ts.
-// - Kasir      : ringkasan transaksinya hari ini.
+// - Pemilik    : dashboard pemisahan dana (§10.4) bulan berjalan, dari
+//   features/reports/queries.ts.
+// - Kasir      : tombol ke layar kasir, transaksinya hari ini, bon yang perlu ditagih.
 
 import {
   BanknoteIcon,
@@ -20,12 +19,14 @@ import {
   PiggyBankIcon,
   PlusIcon,
   ReceiptIcon,
+  ShoppingCartIcon,
   StoreIcon,
   UsersIcon,
 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { ColumnChart } from "@/components/charts/column-chart";
 import { PageHeader } from "@/components/layout/page-header";
 import { ToneBadge } from "@/components/tone-badge";
 import { Button } from "@/components/ui/button";
@@ -33,11 +34,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { StoreCards } from "@/features/stores/components/store-cards";
 import { listStores, summarizeStores, type StoreSummary } from "@/features/stores/queries";
+import { OVERDUE_DAYS } from "@/features/credits/constants";
+import { listCustomerCreditSummaries } from "@/features/credits/queries";
+import { monthlyBreakdown } from "@/features/reports/period";
+import { getOmset, getOutstandingCredit, getPeriodTotals, getRestockList } from "@/features/reports/queries";
+import { dayRange, monthRange, summarizePeriod } from "@/features/reports/service";
+import { summarizeMySales } from "@/features/sales/queries";
 import { countPendingSubscriptions } from "@/features/subscriptions/queries";
 import { verifySession } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { ROLE_LABELS } from "@/lib/auth/roles";
-import { formatRupiah } from "@/lib/format";
+import { zonedDateString } from "@/lib/dates";
+import { formatRupiah, MONTH_NAMES } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Beranda",
@@ -88,7 +96,11 @@ async function HomeContent() {
         {ROLE_LABELS[user.role]})
       </p>
 
-      {can(user, "report:view") ? <OwnerDashboard /> : <CashierHome />}
+      {can(user, "report:view") ? (
+        user.activeStore && <OwnerDashboard storeId={user.activeStore.id} />
+      ) : (
+        user.activeStore && <CashierHome storeId={user.activeStore.id} userId={user.id} />
+      )}
     </div>
   );
 }
@@ -147,47 +159,229 @@ function PlatformSummary({ summary, pendingInvoices }: { summary: StoreSummary; 
   );
 }
 
-// Tiga kotak pemisahan dana. Warna mengikuti arti uang (components/tone-badge.tsx):
-// modal = netral/brand, laba = hijau, piutang = amber.
-function OwnerDashboard() {
+// Dashboard pemisahan dana (§10.4), periode bulan berjalan. Tiga kotak besar
+// dengan warna menurut arti uang (modal = brand, laba = hijau, piutang =
+// amber), lalu omset hari ini, grafik per hari, perlu restock, bon lama.
+async function OwnerDashboard({ storeId }: { storeId: string }) {
+  const today = zonedDateString(new Date());
+  const [year, month] = today.split("-").map(Number);
+  const [totals, outstanding, todayOmset, breakdown, restock, overdue] = await Promise.all([
+    getPeriodTotals(storeId, monthRange(year, month)),
+    getOutstandingCredit(storeId),
+    getOmset(storeId, dayRange(today)),
+    monthlyBreakdown(storeId, year, month),
+    getRestockList(storeId, 8),
+    listCustomerCreditSummaries(storeId, { credit: "OVERDUE", today, overdueDays: OVERDUE_DAYS, limit: 5 }),
+  ]);
+  const summary = summarizePeriod(totals);
+  const periodLabel = `${MONTH_NAMES[month - 1]} ${year}`;
+
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <FundCard
-        icon={<BanknoteIcon className="size-4" />}
-        iconClassName="bg-brand text-brand-foreground"
-        title="Uang modal (harus diputar)"
-        amount={0}
-        description="HPP barang terjual bulan ini. Sisihkan untuk belanja stok lagi."
-      />
-      <FundCard
-        icon={<PiggyBankIcon className="size-4" />}
-        iconClassName="bg-emerald-600 text-white dark:bg-emerald-500"
-        title="Uang laba (boleh diambil)"
-        amount={0}
-        description="Laba bersih bulan ini setelah pengeluaran dan penyusutan."
-        badge={<ToneBadge tone="success">Laba</ToneBadge>}
-      />
-      <FundCard
-        icon={<HandCoinsIcon className="size-4" />}
-        iconClassName="bg-amber-500 text-white"
-        title="Piutang (uang di luar)"
-        amount={0}
-        description="Bon pelanggan yang belum dibayar."
-        badge={<ToneBadge tone="warning">Belum lunas</ToneBadge>}
-      />
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <FundCard
+          icon={<BanknoteIcon className="size-4" />}
+          iconClassName="bg-brand text-brand-foreground"
+          title="Uang modal (harus diputar)"
+          amount={summary.hpp}
+          description={`HPP barang terjual ${periodLabel}. Sisihkan untuk belanja stok lagi.`}
+        />
+        <FundCard
+          icon={<PiggyBankIcon className="size-4" />}
+          iconClassName="bg-emerald-600 text-white dark:bg-emerald-500"
+          title="Uang laba (boleh diambil)"
+          amount={summary.netProfit}
+          description={`Laba bersih ${periodLabel} setelah pengeluaran dan penyusutan.`}
+          badge={
+            summary.netProfit < 0 ? <ToneBadge tone="danger">Rugi</ToneBadge> : <ToneBadge tone="success">Laba</ToneBadge>
+          }
+        />
+        <FundCard
+          icon={<HandCoinsIcon className="size-4" />}
+          iconClassName="bg-amber-500 text-white"
+          title="Piutang (uang di luar)"
+          amount={outstanding}
+          description="Bon pelanggan yang belum dibayar, semua periode."
+          badge={
+            <Button variant="link" size="sm" className="h-auto p-0" nativeButton={false} render={<Link href="/credits" />}>
+              Tagih
+            </Button>
+          }
+        />
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Angka di atas dihitung dari transaksi, bukan uang yang terbukti ada di laci. Aplikasi tidak melacak saldo kas
+        laci; pencocokan kas fisik tetap tanggung jawab pemilik.
+      </p>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="flex flex-col gap-1.5">
+                <CardTitle>Omset & laba bersih per hari</CardTitle>
+                <CardDescription>{periodLabel}</CardDescription>
+              </div>
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto p-0"
+                nativeButton={false}
+                render={<Link href="/reports/monthly" />}
+              >
+                Laporan bulanan
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ColumnChart
+              ariaLabel={`Grafik omset dan laba bersih per hari, ${periodLabel}`}
+              series={[{ name: "Omset" }, { name: "Laba bersih" }]}
+              data={breakdown.map((row) => ({ label: row.label, tick: row.tick, values: [row.omset, row.netProfit] }))}
+            />
+          </CardContent>
+        </Card>
+        <StatCard
+          icon={<ReceiptIcon className="size-4" />}
+          iconClassName="bg-sky-600 text-white dark:bg-sky-500"
+          title="Omset hari ini"
+          value={formatRupiah(todayOmset.omset)}
+          description={`${todayOmset.count.toLocaleString("id-ID")} transaksi. Omset ${periodLabel}: ${formatRupiah(summary.omset)}.`}
+          badge={
+            <Button variant="link" size="sm" className="h-auto p-0" nativeButton={false} render={<Link href="/reports/daily" />}>
+              Laporan harian
+            </Button>
+          }
+        />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Perlu restock</CardTitle>
+            <CardDescription>Stok minus atau di bawah stok minimum.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {restock.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Semua stok aman.</p>
+            ) : (
+              <ul className="flex flex-col divide-y">
+                {restock.map((product) => (
+                  <li key={product.id}>
+                    <Link
+                      href={`/products/${product.id}`}
+                      className="flex items-center justify-between gap-3 py-2 text-sm hover:underline"
+                    >
+                      <span className="truncate font-medium">{product.name}</span>
+                      <span
+                        className={
+                          product.stock < 0
+                            ? "font-medium whitespace-nowrap text-rose-700 tabular-nums dark:text-rose-300"
+                            : "font-medium whitespace-nowrap text-amber-700 tabular-nums dark:text-amber-300"
+                        }
+                      >
+                        {product.stock.toLocaleString("id-ID")} {product.unit}
+                        {product.minStock != null && (
+                          <span className="font-normal text-muted-foreground"> / min {product.minStock}</span>
+                        )}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Bon lebih dari {OVERDUE_DAYS} hari</CardTitle>
+            <CardDescription>Pelanggan dengan bon lama yang belum lunas.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {overdue.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Tidak ada bon lama.</p>
+            ) : (
+              <ul className="flex flex-col divide-y">
+                {overdue.map((customer) => (
+                  <li key={customer.id}>
+                    <Link
+                      href={`/credits/${customer.id}`}
+                      className="flex items-center justify-between gap-3 py-2 text-sm hover:underline"
+                    >
+                      <span className="truncate font-medium">
+                        {customer.name}
+                        <span className="font-normal text-muted-foreground"> · sejak {customer.oldestOpenLabel}</span>
+                      </span>
+                      <span className="font-medium whitespace-nowrap text-amber-700 tabular-nums dark:text-amber-300">
+                        {formatRupiah(customer.outstanding)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
 
-function CashierHome() {
+// Beranda Kasir (§10.5): tombol besar ke layar kasir, ringkasan transaksinya
+// sendiri hari ini (tanpa laba), dan bon terbesar yang perlu ditagih.
+async function CashierHome({ storeId, userId }: { storeId: string; userId: string }) {
+  const today = zonedDateString(new Date());
+  const [mine, debtors] = await Promise.all([
+    summarizeMySales(storeId, userId, today),
+    listCustomerCreditSummaries(storeId, { credit: "OUTSTANDING", today, overdueDays: OVERDUE_DAYS, limit: 5 }),
+  ]);
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Transaksi saya hari ini</CardTitle>
-        <CardDescription>Layar kasir belum tersedia.</CardDescription>
-      </CardHeader>
-      <CardContent className="font-mono text-2xl font-semibold tabular-nums">{formatRupiah(0)}</CardContent>
-    </Card>
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Button size="lg" className="h-auto min-h-24 text-lg" nativeButton={false} render={<Link href="/cashier" />}>
+        <ShoppingCartIcon className="size-6" />
+        Buka kasir
+      </Button>
+      <StatCard
+        icon={<ReceiptIcon className="size-4" />}
+        iconClassName="bg-brand text-brand-foreground"
+        title="Transaksi saya hari ini"
+        value={formatRupiah(mine.total)}
+        description={`${mine.count.toLocaleString("id-ID")} transaksi, tidak termasuk yang dibatalkan.`}
+        badge={
+          <Button variant="link" size="sm" className="h-auto p-0" nativeButton={false} render={<Link href="/sales" />}>
+            Lihat riwayat
+          </Button>
+        }
+      />
+      <Card className="sm:col-span-2">
+        <CardHeader>
+          <CardTitle>Bon yang perlu ditagih</CardTitle>
+          <CardDescription>Sisa bon terbesar. Pelunasan dicatat di menu Bon.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {debtors.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Tidak ada bon yang belum lunas.</p>
+          ) : (
+            <ul className="flex flex-col divide-y">
+              {debtors.map((customer) => (
+                <li key={customer.id}>
+                  <Link
+                    href={`/credits/${customer.id}`}
+                    className="flex items-center justify-between gap-3 py-2 text-sm hover:underline"
+                  >
+                    <span className="truncate font-medium">{customer.name}</span>
+                    <span className="font-medium whitespace-nowrap text-amber-700 tabular-nums dark:text-amber-300">
+                      {formatRupiah(customer.outstanding)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

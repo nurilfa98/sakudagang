@@ -106,6 +106,34 @@
       "when": 1793361086751,
       "tag": "0014_purchases",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1793362058764,
+      "tag": "0015_sales",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1793363165735,
+      "tag": "0016_credit_payments",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793363671459,
+      "tag": "0017_expenses",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793363854529,
+      "tag": "0018_stock_takes",
+      "breakpoints": true
     }
   ]
 }

@@ -38,3 +38,10 @@ export function groupDigits(digits: string, size: number, separator = "-") {
   for (let index = 0; index < digits.length; index += size) groups.push(digits.slice(index, index + size));
   return groups.join(separator);
 }
+
+// Link click-to-chat WhatsApp dengan pesan yang sudah terisi, dibuka dari HP
+// pengguna sendiri (bukan lewat Fonnte). Dipakai untuk konfirmasi bayar
+// langganan ke admin dan menagih bon pelanggan. `phone` format 62….
+export function whatsAppLink(phone: string, text: string) {
+  return `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+}

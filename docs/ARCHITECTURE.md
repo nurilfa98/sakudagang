@@ -23,8 +23,8 @@ sakusembako/
 │   │   ├── (app)/cashier/page.tsx          # layar penjualan (kasir)
 │   │   ├── (app)/sales/page.tsx            # riwayat penjualan
 │   │   ├── (app)/sales/[id]/page.tsx
-│   │   ├── (app)/credits/page.tsx          # piutang (bon) per pelanggan
-│   │   ├── (app)/customers/page.tsx
+│   │   ├── (app)/credits/page.tsx          # pelanggan & piutang (bon)
+│   │   ├── (app)/credits/[id]/page.tsx     # bon satu pelanggan, pelunasan
 │   │   ├── (app)/products/page.tsx         # master barang & stok
 │   │   ├── (app)/products/new/page.tsx
 │   │   ├── (app)/products/[id]/page.tsx
@@ -32,8 +32,10 @@ sakusembako/
 │   │   ├── (app)/purchases/new/page.tsx
 │   │   ├── (app)/purchases/[id]/page.tsx
 │   │   ├── (app)/expenses/page.tsx         # pengeluaran operasional
+│   │   ├── (app)/expenses/categories/page.tsx
 │   │   ├── (app)/stock-takes/page.tsx      # stok opname
 │   │   ├── (app)/stock-takes/[id]/page.tsx
+│   │   ├── (app)/reports/page.tsx          # → /reports/daily
 │   │   ├── (app)/reports/daily/page.tsx    # laporan harian
 │   │   ├── (app)/reports/monthly/page.tsx
 │   │   ├── (app)/reports/yearly/page.tsx
@@ -56,6 +58,9 @@ sakusembako/
 │   │   └── reports/           # agregasi harian/bulanan/tahunan, dashboard
 │   ├── components/            # UI yang dipakai lintas fitur
 │   │   ├── ui/                # shadcn/ui (Base UI)
+│   │   ├── charts/            # grafik SVG (column-chart.tsx), aturan di skill dataviz
+│   │   ├── category-manager.tsx  # kelola kategori barang & pengeluaran (action lewat props)
+│   │   ├── void-action.tsx    # dialog "Batalkan" + alasan wajib (pembelian, penjualan, pelunasan)
 │   │   ├── data-table/        # tabel generik (tanstack)
 │   │   ├── theme/             # tema terang/gelap
 │   │   └── layout/            # AppSidebar, AppHeader, nav-config.ts (daftar menu)
@@ -174,6 +179,10 @@ Penerapan ke tabel yang sudah ada:
 | Pengguna (`/users`) | nama, email, WhatsApp | toko (Superadmin), role, status |
 | Toko (`/stores`) | nama, pemilik | status, jenis usaha, status langganan (nanti) |
 | Mutasi stok (`/products/[id]`) | catatan | jenis mutasi, bulan |
+| Pembelian (`/purchases`) | nomor, catatan | status, tahun, bulan |
+| Penjualan (`/sales`) | nomor, pelanggan | tanggal (bawaan hari ini), metode bayar, status |
+| Pelanggan & bon (`/credits`) | nama, WhatsApp | masih punya bon, bon > 30 hari |
+| Pengeluaran (`/expenses`) | kategori, keterangan | tahun, bulan, kategori |
 
 ### Mengubah data (Server Action)
 

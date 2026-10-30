@@ -23,9 +23,9 @@ import { clearActiveStoreCookie, setActiveStoreCookie } from "@/lib/auth/active-
 import { verifySession } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
-import { productCategories, stores } from "@/lib/db/schema";
+import { expenseCategories, productCategories, stores } from "@/lib/db/schema";
 import { getPlatformSettings } from "@/lib/platform-settings";
-import { DEFAULT_PRODUCT_CATEGORIES } from "@/lib/store-defaults";
+import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_PRODUCT_CATEGORIES } from "@/lib/store-defaults";
 import { addDays } from "@/lib/subscription-access";
 import type { ActionResult } from "@/types/action-result";
 import { getStore } from "./queries";
@@ -58,8 +58,8 @@ export async function createStore(_prevState: ActionResult | undefined, formData
   const { freeDays } = await getPlatformSettings();
   const subscriptionUntil = addDays(new Date(), freeDays);
 
-  // Toko + kategori barang awal dalam satu transaksi (docs/DATABASE-SCHEMA.md §9).
-  // Kategori pengeluaran menyusul saat fitur expenses dibuat.
+  // Toko + kategori barang & pengeluaran awal dalam satu transaksi
+  // (docs/DATABASE-SCHEMA.md §9).
   const created = await db.transaction(async (tx) => {
     const [store] = await tx
       .insert(stores)
@@ -68,6 +68,9 @@ export async function createStore(_prevState: ActionResult | undefined, formData
     await tx
       .insert(productCategories)
       .values(DEFAULT_PRODUCT_CATEGORIES.map((name, index) => ({ storeId: store.id, name, sortOrder: index + 1 })));
+    await tx
+      .insert(expenseCategories)
+      .values(DEFAULT_EXPENSE_CATEGORIES.map((name, index) => ({ storeId: store.id, name, sortOrder: index + 1 })));
     return store;
   });
 

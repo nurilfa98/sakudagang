@@ -62,3 +62,7 @@ Lokasi folder diatur di `drizzle.config.ts` (`out: "./database/migrations"`).
 | `0004_users_phone` | Kolom `users.phone` (nomor WhatsApp, format `62…`) untuk undangan login. |
 | `0005_products` | Tabel `product_categories`, `products`, `stock_movements`. *Manual:* kategori awal untuk toko yang sudah ada. |
 | `0014_purchases` | Tabel `purchases`, `purchase_items` (pembelian / barang masuk) dan `document_sequences` (nomor BL-/JL-/SO- per toko per bulan). |
+| `0015_sales` | Tabel `customers`, `sales`, `sale_items` (kasir). CHECK: bon wajib punya pelanggan. |
+| `0016_credit_payments` | Tabel `credit_payments` (pelunasan bon, bisa dibatalkan dengan status `VOIDED`). |
+| `0017_expenses` | Tabel `expense_categories`, `expenses`. *Manual:* kategori pengeluaran awal untuk toko yang sudah ada. |
+| `0018_stock_takes` | Tabel `stock_takes`, `stock_take_items`. Unique partial index: satu opname `DRAFT` per toko. |
