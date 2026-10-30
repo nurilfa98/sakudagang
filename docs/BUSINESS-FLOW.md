@@ -80,6 +80,8 @@ Tiga peran: **Superadmin**, **Pemilik**, dan **Kasir**.
 | Pelanggan (data bon) | ✓ | ✓ | ✓ tambah & lihat |
 | Pengguna: buat/nonaktifkan **Kasir**, reset password | ✓ | ✓ | |
 | Pengguna: buat/nonaktifkan **Pemilik**, reset password | ✓ | | |
+| **Profile**: ubah nama, email, WhatsApp diri sendiri (menu user di navbar) | ✓ | ✓ | ✓ |
+| Melihat data Pemilik lain di toko yang sama (tanpa mengubah) | ✓ | ✓ | |
 | Toko: buat, ubah data, nonaktifkan (langganan berhenti) | ✓ | ubah data toko sendiri | |
 | Melihat & mengelola akun Superadmin | script saja | | |
 

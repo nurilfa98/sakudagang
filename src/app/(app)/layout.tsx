@@ -106,7 +106,7 @@ async function HeaderUserMenu() {
   const user = await verifySession({ allowLocked: true });
   return (
     <UserMenu
-      user={{ fullName: user.fullName, email: user.email, role: user.role }}
+      user={{ id: user.id, fullName: user.fullName, email: user.email, role: user.role }}
     />
   );
 }

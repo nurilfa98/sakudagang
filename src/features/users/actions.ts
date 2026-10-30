@@ -32,7 +32,7 @@ import { getStore } from "@/features/stores/queries";
 import { credentialsEmail } from "./emails";
 import { getUserDetail } from "./queries";
 import { createUserSchema, updateUserSchema, userIdSchema } from "./schemas";
-import { canManageRoleInStore, canManageUser, isPlaceholderEmail } from "./service";
+import { canEditUser, canManageRoleInStore, canManageUser, isPlaceholderEmail } from "./service";
 import { sendInvitation } from "./whatsapp";
 
 const FORBIDDEN = { success: false, message: "Anda tidak memiliki akses." } as const;
@@ -126,7 +126,8 @@ export async function updateUser(_prevState: ActionResult | undefined, formData:
 
   const target = await getUserDetail(userId.data);
   if (!target) return NOT_FOUND;
-  if (!canManageUser(actor, target)) return FORBIDDEN;
+  // Pengelola, atau pengguna itu sendiri (Profile).
+  if (!canEditUser(actor, target)) return FORBIDDEN;
 
   try {
     await db.update(users).set(parsed.data).where(eq(users.id, target.id));

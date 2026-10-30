@@ -1,5 +1,5 @@
 // Menu user di pojok kanan navbar: avatar → dropdown berisi nama, email,
-// role, link Ganti password, dan tombol Keluar.
+// role, link Profile (ubah data diri), Ganti password, dan tombol Keluar.
 //
 // Letaknya di features/auth (bukan components/layout) karena berisi logika
 // auth (logout). Layout cukup "memasang" komponen ini ke slot navbar.
@@ -14,7 +14,7 @@
 
 "use client";
 
-import { KeyRoundIcon, LogOutIcon } from "lucide-react";
+import { KeyRoundIcon, LogOutIcon, UserRoundIcon } from "lucide-react";
 import Link from "next/link";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,7 @@ function getInitials(name: string) {
     .join("");
 }
 
-export function UserMenu({ user }: { user: Pick<CurrentUser, "fullName" | "email" | "role"> }) {
+export function UserMenu({ user }: { user: Pick<CurrentUser, "id" | "fullName" | "email" | "role"> }) {
   const { isPending, logout } = useLogout();
 
   return (
@@ -66,6 +66,10 @@ export function UserMenu({ user }: { user: Pick<CurrentUser, "fullName" | "email
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         {/* render={<Link />}: item menu dirender sebagai link Next.js */}
+        <DropdownMenuItem render={<Link href={`/users/${user.id}`} />}>
+          <UserRoundIcon />
+          Profile
+        </DropdownMenuItem>
         <DropdownMenuItem render={<Link href="/change-password" />}>
           <KeyRoundIcon />
           Ganti password

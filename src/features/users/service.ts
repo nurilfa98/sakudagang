@@ -5,12 +5,19 @@
 // - OWNER dikelola oleh pemegang user:manage-owner (Superadmin).
 // - CASHIER dikelola oleh pemegang user:manage-cashier di toko yang sama;
 //   Superadmin (tanpa toko) boleh untuk toko mana pun.
+// - Siapa pun boleh MENGUBAH DATA DIRINYA SENDIRI (nama, email, WhatsApp)
+//   lewat "Profile"; nonaktifkan/reset password diri sendiri tetap tidak
+//   boleh (ganti password lewat /change-password).
+// - Pemilik boleh MELIHAT (tanpa mengubah) Pemilik lain di tokonya.
 
 import { can } from "@/lib/auth/permissions";
 import type { Role } from "@/lib/auth/roles";
 import type { CurrentUser } from "@/lib/auth/dal";
 
+// Pemeriksaan per role/toko cukup role + storeId; pemeriksaan "diri sendiri" butuh id.
 type Actor = Pick<CurrentUser, "role" | "storeId">;
+type ActorWithId = Pick<CurrentUser, "id" | "role" | "storeId">;
+type Target = { id: string; role: Role; storeId: string | null };
 
 // Role yang boleh diberikan saat membuat pengguna baru.
 export const ASSIGNABLE_ROLES = ["OWNER", "CASHIER"] as const satisfies readonly Role[];
@@ -23,8 +30,22 @@ export function canManageRoleInStore(actor: Actor, role: Role, storeId: string |
   return actor.storeId === null || actor.storeId === storeId;
 }
 
+// Kelola penuh: ubah data, nonaktifkan, reset password, kirim undangan.
 export function canManageUser(actor: Actor, target: { role: Role; storeId: string | null }) {
   return canManageRoleInStore(actor, target.role, target.storeId);
+}
+
+// Ubah nama/email/WhatsApp: pengelola, atau diri sendiri.
+export function canEditUser(actor: ActorWithId, target: Target) {
+  return actor.id === target.id || canManageUser(actor, target);
+}
+
+// Membuka halaman detail: pengelola, diri sendiri, atau rekan setoko oleh
+// pemegang user:manage-cashier (Pemilik melihat Pemilik lain, hanya baca).
+export function canViewUser(actor: ActorWithId, target: Target) {
+  if (canEditUser(actor, target)) return true;
+  if (target.role === "SUPERADMIN") return false;
+  return can(actor, "user:manage-cashier") && actor.storeId !== null && actor.storeId === target.storeId;
 }
 
 // Role yang boleh dipilih actor saat menambah pengguna.
