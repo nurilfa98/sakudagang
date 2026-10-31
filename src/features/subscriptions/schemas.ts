@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { idParam, parseParam, yearParam, type SearchParams } from "@/lib/filters";
-import { rupiahField } from "@/lib/validation";
+import { integerField, rupiahField } from "@/lib/validation";
 import { PLAN_MONTHS, SUBSCRIPTION_STATUSES, type SubscriptionStatus } from "./constants";
 
 // "6" dari form/select → 6, dan harus salah satu dari PLAN_MONTHS.
@@ -56,11 +56,13 @@ export const adminSubscriptionSchema = z.object({
   note,
 });
 
-// Harga paket standar (Pengaturan): tiga nominal, 0 = belum diatur.
-export const planPricesSchema = z.object({
-  price1: rupiahField("Harga 1 bulan"),
-  price6: rupiahField("Harga 6 bulan"),
-  price12: rupiahField("Harga 1 tahun"),
+// Harga paket standar (Pengaturan platform): harga per bulan (0 = paket belum
+// dijual) + diskon 6 bulan & 1 tahun. Harga 6 bulan & 1 tahun dihitung
+// otomatis (pricing.ts), tidak diketik.
+export const planPricingSchema = z.object({
+  monthlyPrice: rupiahField("Harga per bulan"),
+  discount6: integerField("Diskon 6 bulan", { min: 0, max: 90 }),
+  discount12: integerField("Diskon 1 tahun", { min: 0, max: 90 }),
 });
 
 // Harga khusus per toko: kosong = pakai harga standar (hapus harga khusus).

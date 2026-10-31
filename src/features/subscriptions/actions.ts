@@ -26,22 +26,30 @@ import { z } from "zod";
 import { verifySession } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
-import { stores, storePlanPrices, subscriptionPayments, subscriptionPlans, subscriptions } from "@/lib/db/schema";
+import {
+  platformSettings,
+  stores,
+  storePlanPrices,
+  subscriptionPayments,
+  subscriptionPlans,
+  subscriptions,
+} from "@/lib/db/schema";
 import { zonedYearMonth } from "@/lib/dates";
 import { formatRupiah } from "@/lib/format";
-import { getPlatformSettings } from "@/lib/platform-settings";
+import { getPlatformSettings, PLATFORM_SETTINGS_ID } from "@/lib/platform-settings";
 import { deleteObject, putObject } from "@/lib/storage";
 import { nextPeriod } from "@/lib/subscription-access";
 import { sendWhatsApp } from "@/lib/whatsapp";
 import type { ActionResult } from "@/types/action-result";
 import { OPEN_SUBSCRIPTION_STATUSES, PLAN_LABELS, PLAN_MONTHS, PROOF_MAX_BYTES, PROOF_TYPES, type PlanMonths } from "./constants";
 import { notifyOwnersOfPaymentOutcome } from "./notifications";
+import { planPrice } from "./pricing";
 import { listPlansForStore } from "./queries";
 import {
   acceptPaymentSchema,
   adminSubscriptionSchema,
   claimPaymentSchema,
-  planPricesSchema,
+  planPricingSchema,
   rejectPaymentSchema,
   storePlanPricesSchema,
 } from "./schemas";
@@ -421,21 +429,29 @@ export async function updatePlanPrices(_prevState: ActionResult | undefined, for
   const actor = await verifySession();
   if (!can(actor, "settings:manage")) return FORBIDDEN;
 
-  const parsed = planPricesSchema.safeParse({
-    price1: formData.get("price1"),
-    price6: formData.get("price6"),
-    price12: formData.get("price12"),
+  const parsed = planPricingSchema.safeParse({
+    monthlyPrice: formData.get("monthlyPrice") ?? "",
+    discount6: formData.get("discount6") ?? "",
+    discount12: formData.get("discount12") ?? "",
   });
   if (!parsed.success) return invalid(parsed.error);
 
-  const prices = { 1: parsed.data.price1, 6: parsed.data.price6, 12: parsed.data.price12 } as const;
+  // Harga 6 bulan & 1 tahun dihitung di server dari harga per bulan + diskon
+  // (pricing.ts), lalu disimpan per periode agar tagihan, kartu paket, dan
+  // harga khusus toko tetap membaca subscription_plans seperti biasa.
+  const { discount6, discount12 } = parsed.data;
   await db.transaction(async (tx) => {
     for (const months of PLAN_MONTHS) {
+      const price = planPrice(parsed.data, months);
       await tx
         .insert(subscriptionPlans)
-        .values({ months, price: prices[months] })
-        .onConflictDoUpdate({ target: subscriptionPlans.months, set: { price: prices[months] } });
+        .values({ months, price })
+        .onConflictDoUpdate({ target: subscriptionPlans.months, set: { price } });
     }
+    await tx
+      .insert(platformSettings)
+      .values({ id: PLATFORM_SETTINGS_ID, discount6, discount12 })
+      .onConflictDoUpdate({ target: platformSettings.id, set: { discount6, discount12 } });
   });
 
   revalidateSubscriptionPages();

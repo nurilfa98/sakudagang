@@ -1,10 +1,10 @@
-// Halaman /users: daftar pengguna.
-// - Pemilik: kasir di tokonya sendiri.
-// - Superadmin: semua pemilik & kasir lintas toko; filter ?storeId= memilih
-//   satu toko (tombol "Pengguna" di kartu toko beranda mengarah ke sini).
+// Halaman /users: daftar pengguna toko.
+// - Pemilik: kasir (dan pemilik lain) di tokonya sendiri.
+// - Superadmin: pemilik & kasir toko yang sedang dibuka (pola sama dengan
+//   ArchiPay); belum membuka toko → daftar toko.
 // Akun Superadmin tidak pernah tampil (features/users/queries.ts).
 //
-// Filter (?storeId=&role=&status=) dibaca dari searchParams di dalam
+// Filter (?role=&status=) dibaca dari searchParams di dalam
 // <Suspense> (docs/ARCHITECTURE.md §3 "Daftar data").
 //
 // Referensi:
@@ -13,14 +13,15 @@
 import { PlusIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { listStoreOptions } from "@/features/stores/queries";
 import { UsersTable } from "@/features/users/components/users-table";
 import { listUsers } from "@/features/users/queries";
 import { parseUserFilters } from "@/features/users/schemas";
+import { managedStoreId } from "@/features/users/service";
 import { requirePermission } from "@/lib/auth/dal";
 
 export const metadata: Metadata = {
@@ -37,43 +38,30 @@ export default function UsersPage({ searchParams }: PageProps<"/users">) {
 
 async function UsersContent({ searchParams }: Pick<PageProps<"/users">, "searchParams">) {
   const actor = await requirePermission("user:manage-cashier");
+  const storeId = managedStoreId(actor);
+  if (!storeId) redirect("/stores");
+
+  const filters = parseUserFilters(await searchParams, { allowStore: false });
+  const users = await listUsers({ ...filters, storeId });
   const platformAdmin = actor.storeId === null;
-
-  // Pemilik selalu terkunci ke tokonya; Superadmin memilih lewat filter.
-  const filters = parseUserFilters(await searchParams, { allowStore: platformAdmin });
-  const storeId = actor.storeId ?? filters.storeId;
-
-  const [users, storeOptions] = await Promise.all([
-    listUsers({ ...filters, storeId }),
-    platformAdmin ? listStoreOptions() : Promise.resolve([]),
-  ]);
-  const selectedStore = storeOptions.find((store) => store.id === storeId);
-  const newHref = storeId ? `/users/new?storeId=${storeId}` : "/users/new";
 
   return (
     <>
       <PageHeader
         title="Pengguna"
         description={
-          !platformAdmin
-            ? "Kelola akun kasir, reset password, dan status aktif."
-            : selectedStore
-              ? `Pengguna toko ${selectedStore.name}.`
-              : "Semua pemilik dan kasir di seluruh toko."
+          platformAdmin
+            ? `Pemilik & kasir toko ${actor.activeStore?.name ?? ""}: akun, reset password, dan status aktif.`
+            : "Kelola akun kasir, reset password, dan status aktif."
         }
         action={
-          <Button nativeButton={false} render={<Link href={newHref} />}>
+          <Button nativeButton={false} render={<Link href="/users/new" />}>
             <PlusIcon />
             Tambah pengguna
           </Button>
         }
       />
-      <UsersTable
-        users={users}
-        showStore={platformAdmin}
-        filters={filters}
-        storeOptions={storeOptions.map((store) => ({ value: store.id, label: store.name }))}
-      />
+      <UsersTable users={users} showStore={false} filters={filters} />
     </>
   );
 }

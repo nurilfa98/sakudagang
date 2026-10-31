@@ -20,7 +20,8 @@
 import { LoaderCircleIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { startTransition, useActionState, useEffect, useState, type FormEvent } from "react";
+import { startTransition, useActionState, useState, type FormEvent } from "react";
+import { useActionResult } from "@/hooks/use-action-result";
 import { PhoneInput } from "@/components/phone-input";
 import { TextField } from "@/components/text-field";
 import { Button } from "@/components/ui/button";
@@ -57,9 +58,9 @@ function CreateForm({ stores, defaultStoreId, roleChoices, defaultRole, backHref
   const error = state && !state.success ? state : undefined;
   const fieldError = (name: string) => error?.fieldErrors?.[name]?.[0];
 
-  useEffect(() => {
-    if (state && !state.success && !state.fieldErrors) notify.error(state.message);
-  }, [state]);
+  useActionResult(state, (result) => {
+    if (!result.success && !result.fieldErrors) notify.error(result.message);
+  });
 
   if (state?.success) {
     return <CreatedPanel result={state.data} backHref={backHref} onReset={onReset} />;

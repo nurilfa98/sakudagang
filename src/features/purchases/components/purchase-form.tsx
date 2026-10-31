@@ -14,7 +14,8 @@
 import { LoaderCircleIcon, PackageSearchIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { startTransition, useActionState, useEffect, useState, type FormEvent } from "react";
+import { startTransition, useActionState, useState, type FormEvent } from "react";
+import { useActionResult } from "@/hooks/use-action-result";
 import { RupiahInput } from "@/components/rupiah-input";
 import { TextField } from "@/components/text-field";
 import { Button } from "@/components/ui/button";
@@ -53,15 +54,14 @@ export function PurchaseForm({ products, today }: { products: PurchasableProduct
   const error = state && !state.success ? state : undefined;
   const fieldError = (name: string) => error?.fieldErrors?.[name]?.[0];
 
-  useEffect(() => {
-    if (!state) return;
-    if (!state.success) {
-      if (!state.fieldErrors) notify.error(state.message);
+  useActionResult(state, (result) => {
+    if (!result.success) {
+      if (!result.fieldErrors) notify.error(result.message);
       return;
     }
     notify.success("Pembelian tersimpan. Stok dan harga modal sudah diperbarui.");
-    router.push(`/purchases/${state.data.id}`);
-  }, [state, router]);
+    router.push(`/purchases/${result.data.id}`);
+  });
 
   const added = new Set(lines.map((line) => line.product.id));
   const available = products.filter((product) => !added.has(product.id));

@@ -71,7 +71,16 @@ const hasPaidSubscription = sql<boolean>`${exists(
 // Referensi:
 // - node_modules/next/dist/docs/01-app/03-api-reference/01-directives/use-cache-private.md
 // - node_modules/next/dist/docs/01-app/03-api-reference/04-functions/cacheLife.md
+//
+// Cookie toko aktif Superadmin dibaca DI LUAR fungsi cache lalu dikirim
+// sebagai argumen, sehingga menjadi bagian dari kunci cache. Tanpa ini, hasil
+// lama (toko sebelumnya / belum ada toko) bisa terpakai lagi tepat setelah
+// Superadmin menekan "Buka", lalu ia terlempar kembali ke daftar toko.
 export async function getCurrentUser(): Promise<CurrentUser | null> {
+  return loadCurrentUser(await readActiveStoreCookie());
+}
+
+async function loadCurrentUser(activeStoreCookie: string | null): Promise<CurrentUser | null> {
   "use cache: private";
   cacheLife("minutes");
 
@@ -124,7 +133,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
           }),
         }
       : user.role === "SUPERADMIN"
-        ? await findSuperadminActiveStore(settings.graceDays)
+        ? await findSuperadminActiveStore(activeStoreCookie, settings.graceDays)
         : null;
 
   // Kasir toko yang langganannya habis (lewat masa tenggang) tidak bisa masuk;
@@ -144,8 +153,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 
 // Toko yang dipilih Superadmin (cookie), dicocokkan ke database. Toko nonaktif
 // tetap boleh dibuka Superadmin (untuk mengelolanya), berbeda dengan Pemilik.
-async function findSuperadminActiveStore(graceDays: number) {
-  const storeId = await readActiveStoreCookie();
+async function findSuperadminActiveStore(storeId: string | null, graceDays: number) {
   if (!storeId) return null;
   const [store] = await db
     .select({
@@ -171,10 +179,10 @@ async function findSuperadminActiveStore(graceDays: number) {
 // user beserta storeId toko yang sedang dibuka (pasti terisi), sehingga query
 // bisa langsung `where(eq(products.storeId, storeId))`.
 // - Pemilik/Kasir: tokonya sendiri.
-// - Superadmin: toko yang dipilih dari beranda; belum memilih → ke beranda.
+// - Superadmin: toko yang dibuka dari halaman Toko; belum membuka → ke sana.
 export async function requireStore(permission: Permission, options?: { allowLocked?: boolean }) {
   const user = await requirePermission(permission, options);
-  if (!user.activeStore) redirect("/");
+  if (!user.activeStore) redirect("/stores");
   return { ...user, storeId: user.activeStore.id, activeStore: user.activeStore };
 }
 

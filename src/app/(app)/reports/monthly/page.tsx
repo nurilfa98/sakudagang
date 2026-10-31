@@ -43,9 +43,11 @@ export default function MonthlyReportPage({ searchParams }: PageProps<"/reports/
 
 async function MonthlyReportContent({ searchParams }: Pick<PageProps<"/reports/monthly">, "searchParams">) {
   const actor = await requireStore("report:view");
+  // searchParams dibaca SEBELUM new Date(): saat prerender ia menunda render,
+  // sehingga "hari ini" selalu dihitung per request.
+  const period = parseReportPeriod(await searchParams);
   const today = zonedDateString(new Date());
   const [currentYear, currentMonth] = today.split("-").map(Number);
-  const period = parseReportPeriod(await searchParams);
   const year = period.year ?? currentYear;
   const month = period.month ?? currentMonth;
   const range = monthRange(year, month);

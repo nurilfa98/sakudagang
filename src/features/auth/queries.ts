@@ -13,6 +13,8 @@ import { stores, users } from "@/lib/db/schema";
 
 const credentialColumns = {
   id: users.id,
+  // Role menentukan halaman pertama setelah login / ganti password.
+  role: users.role,
   passwordHash: users.passwordHash,
   isActive: users.isActive,
   mustChangePassword: users.mustChangePassword,
@@ -25,7 +27,6 @@ export async function findUserForLogin(email: string) {
   const [user] = await db
     .select({
       ...credentialColumns,
-      role: users.role,
       storeIsActive: stores.isActive,
       storeSubscriptionUntil: stores.subscriptionUntil,
     })

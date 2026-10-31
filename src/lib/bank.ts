@@ -39,6 +39,15 @@ export function formatAccountNumber(bankName: string | null | undefined, raw: st
   return groups.join("-");
 }
 
+// Contoh nomor untuk placeholder isian, mengikuti pola bank yang sedang
+// diketik: BCA "123-456-7890", Mandiri "123-45-6789012-3", lainnya
+// "1234-5678-90". Tetap tampil walau nama bank sudah diisi.
+export function accountNumberPlaceholder(bankName: string | null | undefined) {
+  const pattern = BANK_PATTERNS.find((bank) => bank.match.test(bankName ?? ""));
+  const length = pattern ? pattern.groups.reduce((total, size) => total + size, 0) : 10;
+  return formatAccountNumber(bankName, "1234567890".repeat(2).slice(0, length));
+}
+
 // Warna khas tiap bank untuk garis tepi kartu rekening (UI pemilik & admin),
 // agar rekening mudah dikenali sekilas. Kelas ditulis lengkap (bukan dirangkai)
 // supaya terbaca Tailwind. Bank lain memakai warna netral.

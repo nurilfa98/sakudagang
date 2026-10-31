@@ -1,4 +1,4 @@
-// Halaman /change-password. Ada di grup (auth) agar tampil tanpa sidebar:
+// Halaman /change-password. Ada di grup (auth) agar tampil tanpa header & menu:
 // user dengan password sementara belum boleh membuka menu apa pun.
 //
 // Halaman ini memakai getCurrentUser(), BUKAN verifySession(), karena

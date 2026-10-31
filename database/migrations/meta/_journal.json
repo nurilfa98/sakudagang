@@ -134,6 +134,13 @@
       "when": 1793363854529,
       "tag": "0018_stock_takes",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793449828696,
+      "tag": "0019_plan_discounts",
+      "breakpoints": true
     }
   ]
 }

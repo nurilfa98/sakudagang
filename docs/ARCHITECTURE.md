@@ -15,11 +15,12 @@ sakusembako/
 ├── scripts/                   # create-superadmin.mjs (akun developer, tersembunyi)
 ├── src/
 │   ├── app/                   # ROUTING SAJA — tipis, tidak ada logika bisnis
-│   │   ├── (auth)/layout.tsx               # tampilan tengah tanpa sidebar
+│   │   ├── (auth)/layout.tsx               # tampilan tengah tanpa header & menu
 │   │   ├── (auth)/login/page.tsx
 │   │   ├── (auth)/change-password/page.tsx
-│   │   ├── (app)/layout.tsx                # sidebar + navbar setelah login
-│   │   ├── (app)/page.tsx                  # beranda: dashboard Pemilik / beranda Kasir
+│   │   ├── (app)/layout.tsx                # header (logo, breadcrumb, toko, user) setelah login, tanpa sidebar
+│   │   ├── (app)/page.tsx                  # kotak menu (+ cari menu), halaman pertama setelah login
+│   │   ├── (app)/beranda/page.tsx          # beranda: dashboard Pemilik / beranda Kasir (Superadmin tidak punya)
 │   │   ├── (app)/cashier/page.tsx          # layar penjualan (kasir)
 │   │   ├── (app)/sales/page.tsx            # riwayat penjualan
 │   │   ├── (app)/sales/[id]/page.tsx
@@ -39,8 +40,11 @@ sakusembako/
 │   │   ├── (app)/reports/daily/page.tsx    # laporan harian
 │   │   ├── (app)/reports/monthly/page.tsx
 │   │   ├── (app)/reports/yearly/page.tsx
-│   │   ├── (app)/users/page.tsx            # pengguna
-│   │   ├── (app)/stores/page.tsx           # daftar toko (Superadmin) / data toko sendiri (Pemilik)
+│   │   ├── (app)/users/page.tsx            # pengguna toko (Superadmin: toko yang sedang dibuka)
+│   │   ├── (app)/(platform)/layout.tsx     # tab Toko · Tagihan · Pengaturan platform (Superadmin)
+│   │   ├── (app)/(platform)/stores/page.tsx    # kartu toko (Superadmin) / data toko sendiri (Pemilik)
+│   │   ├── (app)/(platform)/billing/page.tsx   # tagihan langganan semua toko
+│   │   ├── (app)/(platform)/settings/page.tsx  # pengaturan platform
 │   │   ├── api/reports/export/route.ts     # unduh Excel
 │   │   ├── api/cron/...                    # job terjadwal (bila nanti perlu)
 │   │   ├── layout.tsx
@@ -63,7 +67,7 @@ sakusembako/
 │   │   ├── void-action.tsx    # dialog "Batalkan" + alasan wajib (pembelian, penjualan, pelunasan)
 │   │   ├── data-table/        # tabel generik (tanstack)
 │   │   ├── theme/             # tema terang/gelap
-│   │   └── layout/            # AppSidebar, AppHeader, nav-config.ts (daftar menu)
+│   │   └── layout/            # AppHeader, MenuLauncher, MenuFab, nav-config.ts (daftar menu)
 │   ├── hooks/                 # React hooks bersama (use-mobile)
 │   ├── lib/                   # infrastruktur (bukan logika bisnis)
 │   │   ├── db/                # koneksi + schema database

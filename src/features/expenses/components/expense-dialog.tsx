@@ -7,7 +7,8 @@
 "use client";
 
 import { LoaderCircleIcon, PencilIcon, PlusIcon } from "lucide-react";
-import { startTransition, useActionState, useEffect, useState, type FormEvent } from "react";
+import { startTransition, useActionState, useState, type FormEvent } from "react";
+import { useActionResult } from "@/hooks/use-action-result";
 import { RupiahInput } from "@/components/rupiah-input";
 import { TextField } from "@/components/text-field";
 import {
@@ -94,15 +95,14 @@ function ExpenseForm({
   const error = state && !state.success ? state : undefined;
   const fieldError = (name: string) => error?.fieldErrors?.[name]?.[0];
 
-  useEffect(() => {
-    if (!state) return;
-    if (!state.success) {
-      if (!state.fieldErrors) notify.error(state.message);
+  useActionResult(state, (result) => {
+    if (!result.success) {
+      if (!result.fieldErrors) notify.error(result.message);
       return;
     }
     notify.success(expense ? "Pengeluaran diubah." : "Pengeluaran dicatat.");
     onDone();
-  }, [state, expense, onDone]);
+  });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

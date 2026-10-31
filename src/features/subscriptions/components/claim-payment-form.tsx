@@ -14,6 +14,7 @@
 
 import { CheckIcon, FileTextIcon, LoaderCircleIcon, ZoomInIcon } from "lucide-react";
 import { startTransition, useActionState, useEffect, useState, type FormEvent } from "react";
+import { useActionResult } from "@/hooks/use-action-result";
 import { TextField } from "@/components/text-field";
 import {
   AlertDialog,
@@ -36,10 +37,10 @@ export function ClaimPaymentForm({ months, subscriptionId }: { months?: number; 
   const [selected, setSelected] = useState<Selected | null>(null);
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    if (state?.success) notify.success("Terima kasih. Admin akan memeriksa dan mengonfirmasi pembayaran Anda.");
-    else if (state) notify.error(state.message);
-  }, [state]);
+  useActionResult(state, (result) => {
+    if (result.success) notify.success("Terima kasih. Admin akan memeriksa dan mengonfirmasi pembayaran Anda.");
+    else notify.error(result.message);
+  });
 
   // URL objek dilepas saat berkas diganti / komponen dilepas agar tidak bocor memori.
   useEffect(() => {

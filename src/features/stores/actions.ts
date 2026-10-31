@@ -123,8 +123,9 @@ export async function setStoreActive(storeId: string, active: boolean): Promise<
 // Superadmin masuk / keluar toko (lib/auth/active-store.ts)
 // ---------------------------------------------------------------------------
 
-// Dipanggil dari <form action={enterStore}> di kartu toko beranda Superadmin:
-// hidden input storeId + redirectTo (menu tujuan, mis. "/products").
+// Dipanggil dari <form action={enterStore}> (tombol Buka di kartu & detail
+// toko): hidden input storeId + redirectTo opsional (bawaan: kotak menu toko).
+// Gagal validasi → kembali ke daftar toko.
 export async function enterStore(formData: FormData) {
   const actor = await verifySession();
   if (!can(actor, "store:manage")) redirect("/");
@@ -133,13 +134,13 @@ export async function enterStore(formData: FormData) {
     .object({
       storeId: storeIdSchema,
       // Hanya path internal, agar tidak bisa dipakai mengarahkan ke situs lain.
-      redirectTo: z.string().regex(/^\/(?!\/)[^\s]*$/).default("/products"),
+      redirectTo: z.string().regex(/^\/(?!\/)[^\s]*$/).default("/"),
     })
     .safeParse({ storeId: formData.get("storeId"), redirectTo: formData.get("redirectTo") ?? undefined });
-  if (!input.success) redirect("/");
+  if (!input.success) redirect("/stores");
 
   const store = await getStore(input.data.storeId);
-  if (!store) redirect("/");
+  if (!store) redirect("/stores");
 
   await setActiveStoreCookie(store.id);
   // Data user (termasuk activeStore) di-cache per sesi; buang agar menu &
@@ -152,7 +153,8 @@ export async function leaveStore() {
   const actor = await verifySession();
   if (can(actor, "store:manage")) await clearActiveStoreCookie();
   revalidatePath("/", "layout");
-  redirect("/");
+  // Kembali ke daftar toko untuk memilih toko lain.
+  redirect("/stores");
 }
 
 function invalid(error: z.ZodError) {

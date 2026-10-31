@@ -1,15 +1,16 @@
 // Halaman /users/new: tambah pengguna baru.
 // - Pemilik: toko tetap (tokonya), role tetap Kasir.
-// - Superadmin: pilih toko (?storeId= sebagai bawaan) dan role (?role=).
+// - Superadmin: toko = toko yang sedang dibuka (belum membuka → daftar toko),
+//   role Pemilik atau Kasir (?role= sebagai bawaan).
 
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { listStoreOptions } from "@/features/stores/queries";
 import { UserCreateForm } from "@/features/users/components/user-create-form";
-import { ASSIGNABLE_ROLES, assignableRolesFor, type AssignableRole } from "@/features/users/service";
+import { assignableRolesFor, managedStoreId } from "@/features/users/service";
 import { requirePermission } from "@/lib/auth/dal";
 
 export const metadata: Metadata = {
@@ -36,33 +37,14 @@ export default function NewUserPage({ searchParams }: PageProps<"/users/new">) {
 
 async function NewUserContent({ searchParams }: Pick<PageProps<"/users/new">, "searchParams">) {
   const actor = await requirePermission("user:manage-cashier");
+  const storeId = managedStoreId(actor);
+  if (!storeId) redirect("/stores");
   const roleChoices = assignableRolesFor(actor);
 
-  const { storeId, role } = await searchParams;
-  const requestedStore = (Array.isArray(storeId) ? storeId[0] : storeId)?.slice(0, 36);
+  const { role } = await searchParams;
   const requestedRole = Array.isArray(role) ? role[0] : role;
   const defaultRole = roleChoices.find((r) => r === requestedRole) ?? roleChoices[0] ?? "CASHIER";
 
-  // Pemilik: toko sudah tetap. Superadmin: pilih dari toko aktif.
-  if (actor.storeId) {
-    return (
-      <UserCreateForm
-        defaultStoreId={actor.storeId}
-        roleChoices={roleChoices}
-        defaultRole={defaultRole}
-        backHref="/users"
-      />
-    );
-  }
-
-  const stores = await listStoreOptions();
-  return (
-    <UserCreateForm
-      stores={stores}
-      defaultStoreId={stores.some((s) => s.id === requestedStore) ? requestedStore : undefined}
-      roleChoices={roleChoices.length > 0 ? roleChoices : [...ASSIGNABLE_ROLES]}
-      defaultRole={defaultRole as AssignableRole}
-      backHref={requestedStore ? `/stores/${requestedStore}` : "/users"}
-    />
-  );
+  // Toko selalu tetap: toko Pemilik, atau toko yang sedang dibuka Superadmin.
+  return <UserCreateForm defaultStoreId={storeId} roleChoices={roleChoices} defaultRole={defaultRole} backHref="/users" />;
 }

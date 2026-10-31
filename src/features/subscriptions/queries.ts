@@ -105,49 +105,6 @@ export async function getStorePlanPrices(storeId: string) {
   );
 }
 
-// Toko yang punya harga khusus, untuk tabel di halaman Pengaturan.
-export type StorePriceRow = {
-  storeId: string;
-  storeName: string;
-  price1: number | null;
-  price6: number | null;
-  price12: number | null;
-  note: string | null;
-};
-
-export async function listStorePriceOverrides(): Promise<StorePriceRow[]> {
-  await io();
-  const rows = await db
-    .select({
-      storeId: storePlanPrices.storeId,
-      storeName: stores.name,
-      months: storePlanPrices.months,
-      price: storePlanPrices.price,
-      note: storePlanPrices.note,
-    })
-    .from(storePlanPrices)
-    .innerJoin(stores, eq(storePlanPrices.storeId, stores.id))
-    .orderBy(asc(stores.name));
-
-  const byStore = new Map<string, StorePriceRow>();
-  for (const row of rows) {
-    const entry = byStore.get(row.storeId) ?? {
-      storeId: row.storeId,
-      storeName: row.storeName,
-      price1: null,
-      price6: null,
-      price12: null,
-      note: null,
-    };
-    if (row.months === 1) entry.price1 = row.price;
-    if (row.months === 6) entry.price6 = row.price;
-    if (row.months === 12) entry.price12 = row.price;
-    entry.note = entry.note ?? row.note;
-    byStore.set(row.storeId, entry);
-  }
-  return [...byStore.values()];
-}
-
 // Status akses + tagihan terbuka satu toko (halaman Langganan, detail toko).
 export async function getStoreSubscriptionState(storeId: string): Promise<StoreSubscriptionState | null> {
   await io();

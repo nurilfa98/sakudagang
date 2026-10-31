@@ -14,7 +14,7 @@
 import { LockIcon, XCircleIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { NAV_GROUPS } from "@/components/layout/nav-config";
+import { MENU_ITEMS } from "@/components/layout/nav-config";
 import { PageHeader } from "@/components/layout/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,8 +58,8 @@ async function SubscriptionContent({ searchParams }: Pick<PageProps<"/subscripti
   const actor = await requireStore("subscription:view", { allowLocked: true });
   const params = await searchParams;
   const filters = parseSubscriptionFilters(params, { allowStore: false });
-  // ?from=/products: user mengklik menu lain saat toko terkunci (nav-main.tsx).
-  const fromMenu = NAV_GROUPS.flatMap((group) => group.items).find((item) => item.href === firstParam(params.from));
+  // ?from=/products: user mengklik menu lain saat toko terkunci (menu-launcher.tsx).
+  const fromMenu = MENU_ITEMS.find((item) => item.href === firstParam(params.from));
 
   const [state, plans, settings, banks, history, years] = await Promise.all([
     getStoreSubscriptionState(actor.storeId),

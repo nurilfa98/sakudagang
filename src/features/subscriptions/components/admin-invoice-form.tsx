@@ -5,7 +5,8 @@
 "use client";
 
 import { LoaderCircleIcon, ReceiptIcon } from "lucide-react";
-import { startTransition, useActionState, useEffect, useState, type FormEvent } from "react";
+import { startTransition, useActionState, useState, type FormEvent } from "react";
+import { useActionResult } from "@/hooks/use-action-result";
 import { TextField } from "@/components/text-field";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -28,10 +29,10 @@ export function AdminInvoiceForm({ storeId, plans, hasPending }: { storeId: stri
     label: `${PLAN_LABELS[plan.months]} · ${formatRupiah(plan.price)}${plan.custom ? " (khusus)" : ""}`,
   }));
 
-  useEffect(() => {
-    if (state?.success) notify.success("Pembayaran dicatat, masa aktif toko diperpanjang.");
-    else if (state && !state.fieldErrors) notify.error(state.message);
-  }, [state]);
+  useActionResult(state, (result) => {
+    if (result.success) notify.success("Pembayaran dicatat, masa aktif toko diperpanjang.");
+    else if (!result.fieldErrors) notify.error(result.message);
+  });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

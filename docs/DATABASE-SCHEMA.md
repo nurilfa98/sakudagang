@@ -328,6 +328,8 @@ Satu baris, `id = 'default'`, dibuat oleh migration. Diubah Superadmin di menu P
 | qris_image_key | varchar(255) null | Key gambar QRIS statis di `lib/storage.ts`; dilayani `/api/qris`. |
 | free_days | integer default 14 | Masa gratis toko baru. |
 | grace_days | integer default 3 | Masa tenggang setelah jatuh tempo. |
+| discount_6 | integer default 10 | Diskon (%) paket 6 bulan dibanding harga per bulan (migration 0019). |
+| discount_12 | integer default 20 | Diskon (%) paket 1 tahun. Harga di `subscription_plans` dihitung dari harga 1 bulan + diskon ini saat disimpan. |
 
 ### `payment_bank_accounts`
 

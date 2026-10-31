@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { clearActiveStoreCookie } from "@/lib/auth/active-store";
 import { createSession, destroySession, getSession } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -92,12 +93,15 @@ export async function login(_prevState: ActionResult | undefined, formData: Form
   // Checkbox "Ingat saya" di login-form.tsx: value="1" bila dicentang.
   const rememberMe = formData.get("rememberMe") === "1";
   await createSession(user.id, user.sessionVersion, rememberMe);
+  // Superadmin selalu mulai dari daftar toko, bukan dari toko yang terakhir
+  // dibuka di sesi sebelumnya.
+  if (user.role === "SUPERADMIN") await clearActiveStoreCookie();
   clearClientCache();
 
   // 5. Pindah halaman. redirect() bekerja dengan melempar error khusus, jadi
   // JANGAN letakkan di dalam try/catch, nanti tertangkap dan tidak jalan.
   // User dengan password sementara langsung diarahkan ke halaman ganti password.
-  redirect(user.mustChangePassword ? "/change-password" : "/");
+  redirect(user.mustChangePassword ? "/change-password" : homePath(user.role));
 }
 
 // Ganti password milik sendiri. Dipakai untuk dua keadaan:
@@ -151,7 +155,7 @@ export async function changePassword(
   // Pilihan "Ingat saya" dari sesi sebelumnya dipertahankan.
   await createSession(account.id, sessionVersion, session.rememberMe);
   clearClientCache();
-  redirect("/");
+  redirect(homePath(account.role));
 }
 
 // Logout sengaja TIDAK memanggil redirect(). Halaman tujuan dibuka oleh
@@ -172,4 +176,10 @@ export async function logout() {
 // (bagian "Revalidating all data")
 function clearClientCache() {
   revalidatePath("/", "layout");
+}
+
+// Halaman pertama setelah login: daftar toko untuk Superadmin (pengelola
+// platform), kotak menu untuk Pemilik & Kasir.
+function homePath(role: string) {
+  return role === "SUPERADMIN" ? "/stores" : "/";
 }

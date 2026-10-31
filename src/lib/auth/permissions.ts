@@ -10,7 +10,7 @@
 // ROLE_PERMISSIONS di bawah, tanpa mencari-cari pengecekan di seluruh kode.
 //
 // File ini tidak memakai `server-only` karena Client Component juga memakainya
-// (misalnya sidebar menyembunyikan menu). Menyembunyikan menu hanya soal
+// (misalnya kotak menu menyembunyikan menu). Menyembunyikan menu hanya soal
 // tampilan; pengaman sebenarnya tetap requirePermission() di server.
 //
 // Tabel hak akses lengkap: docs/BUSINESS-FLOW.md §2.

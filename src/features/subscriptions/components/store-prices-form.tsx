@@ -5,7 +5,8 @@
 
 import { LoaderCircleIcon } from "lucide-react";
 import Link from "next/link";
-import { startTransition, useActionState, useEffect, type FormEvent } from "react";
+import { startTransition, useActionState, type FormEvent } from "react";
+import { useActionResult } from "@/hooks/use-action-result";
 import { RupiahInput } from "@/components/rupiah-input";
 import { TextField } from "@/components/text-field";
 import { Button } from "@/components/ui/button";
@@ -16,16 +17,17 @@ import type { PlanPrice } from "@/features/subscriptions/queries";
 import { formatRupiah } from "@/lib/format";
 import { notify } from "@/lib/notify";
 
-export function StorePricesForm({ storeId, plans, cancelHref }: { storeId: string; plans: PlanPrice[]; cancelHref: string }) {
+// `cancelHref` opsional: di detail toko form ini tampil di dalam halaman, tanpa tombol kembali.
+export function StorePricesForm({ storeId, plans, cancelHref }: { storeId: string; plans: PlanPrice[]; cancelHref?: string }) {
   const [state, formAction, pending] = useActionState(saveStorePlanPrices, undefined);
   const error = state && !state.success ? state : undefined;
   const fieldError = (name: string) => error?.fieldErrors?.[name]?.[0];
   const note = plans.find((plan) => plan.note)?.note ?? "";
 
-  useEffect(() => {
-    if (state?.success) notify.success("Harga khusus disimpan.");
-    else if (state && !state.fieldErrors) notify.error(state.message);
-  }, [state]);
+  useActionResult(state, (result) => {
+    if (result.success) notify.success("Harga khusus disimpan.");
+    else if (!result.fieldErrors) notify.error(result.message);
+  });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -74,9 +76,11 @@ export function StorePricesForm({ storeId, plans, cancelHref }: { storeId: strin
             {pending && <LoaderCircleIcon className="animate-spin" />}
             {pending ? "Menyimpan..." : "Simpan harga khusus"}
           </Button>
-          <Button variant="outline" nativeButton={false} render={<Link href={cancelHref} />}>
-            Kembali
-          </Button>
+          {cancelHref && (
+            <Button variant="outline" nativeButton={false} render={<Link href={cancelHref} />}>
+              Kembali
+            </Button>
+          )}
         </Field>
       </FieldGroup>
     </form>

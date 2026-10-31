@@ -1,4 +1,4 @@
-// Hook dari shadcn (dipakai komponen Sidebar) untuk mendeteksi layar HP.
+// Hook dari shadcn untuk mendeteksi layar HP (dipakai posisi toast).
 //
 // Versi bawaan shadcn memanggil setState di dalam useEffect, yang ditolak
 // aturan lint React 19 (react-hooks/set-state-in-effect). Versi ini memakai

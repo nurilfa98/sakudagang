@@ -593,6 +593,11 @@ export const platformSettings = pgTable("platform_settings", {
   qrisImageKey: varchar("qris_image_key", { length: 255 }),
   freeDays: integer("free_days").notNull().default(14),
   graceDays: integer("grace_days").notNull().default(3),
+  // Diskon (%) paket 6 bulan & 1 tahun dibanding harga per bulan. Harga paket
+  // di subscription_plans dihitung dari harga 1 bulan + diskon ini saat
+  // Superadmin menyimpan Harga paket (features/subscriptions/pricing.ts).
+  discount6: integer("discount_6").notNull().default(10),
+  discount12: integer("discount_12").notNull().default(20),
   updatedAt: updatedAt(),
 });
 

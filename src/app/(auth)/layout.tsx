@@ -1,4 +1,4 @@
-// Layout untuk halaman akun tanpa sidebar/navbar (route group "(auth)"):
+// Layout untuk halaman akun tanpa header & menu (route group "(auth)"):
 // login dan ganti password. Konten di tengah layar.
 //
 // min-h-svh = tinggi layar "small viewport". Di HP, ini tidak tertutup

@@ -89,7 +89,7 @@ Tiga peran: **Superadmin**, **Pemilik**, dan **Kasir**.
 | Membatalkan pelunasan bon | ✓ semua | ✓ semua | ✓ hanya catatannya, hari yang sama |
 | Pengguna: buat/nonaktifkan **Kasir**, reset password | ✓ | ✓ | |
 | Pengguna: buat/nonaktifkan **Pemilik**, reset password | ✓ | | |
-| **Profile**: ubah nama, email, WhatsApp diri sendiri (menu user di navbar) | ✓ | ✓ | ✓ |
+| **Profile**: ubah nama, email, WhatsApp diri sendiri (menu user di header) | ✓ | ✓ | ✓ |
 | Melihat data Pemilik lain di toko yang sama (tanpa mengubah) | ✓ | ✓ | |
 | Toko: buat, ubah data, nonaktifkan (langganan berhenti) | ✓ | ubah data toko sendiri | |
 | Melihat & mengelola akun Superadmin | script saja | | |
@@ -116,36 +116,50 @@ Aturan turunan dari hierarki ini:
 | Toko | Pemilik | Hanya data tokonya: barang, transaksi, laporan, Kasir. |
 | Toko | Kasir | Hanya layar kasir & barang tokonya, tanpa harga modal. |
 
-**Beranda Superadmin** (beranda platform), dari atas ke bawah:
+**Navigasi** (31 Okt 2026, pola sama dengan ArchiPay, tanpa sidebar):
 
-1. Kotak ringkasan klien, bentuknya sama dengan kotak dana Pemilik tetapi
-   berikon toko: **Toko aktif** (dari total toko; peringatan bila ada toko
-   tanpa pemilik), **Toko nonaktif** (langganan berhenti), **Pengguna toko**
-   (jumlah Pemilik + Kasir seluruh toko).
-2. **Kartu per toko**: nama, jenis usaha, status aktif/nonaktif, pemilik,
-   jumlah pengguna, jumlah barang aktif, tanggal bergabung, dan tombol
-   **menu toko itu** (Barang, Pengguna, nanti Kasir/Pembelian/Laporan) serta
-   "Data toko". Daftar tombol mengikuti menu sidebar bertanda `scope: "store"`
-   di `src/components/layout/nav-config.ts`, jadi fitur baru otomatis muncul.
+- **Pemilik & Kasir**: setelah login membuka **kotak menu** di `/`: ikon menu
+  + kolom cari (Enter membuka menu pertama yang cocok), difilter sesuai
+  permission. Dashboard ada di menu **Beranda** (`/beranda`).
+- Header berisi logo (kembali ke kotak menu), breadcrumb "Menu > nama menu",
+  toko & masa aktif, tema, dan menu user. Tombol bulat di kanan bawah juga
+  kembali ke kotak menu (disembunyikan di layar Kasir agar tidak menutupi
+  tombol bayar).
+- **Toko terkunci**: menu tetap tampil dengan ikon gembok; selain Langganan
+  mengarah ke halaman Langganan dengan pesan menu asalnya.
 
-Menekan tombol menu membuat toko itu menjadi **toko aktif** (disimpan di
-cookie, ditampilkan di navbar dengan tombol Ganti/Keluar) dan langsung
-membuka menu tersebut. Selama toko aktif dipilih, semua menu bekerja persis
-seperti untuk Pemilik toko itu, termasuk mencatat transaksi (tercatat atas
-nama Superadmin). Pemilik/Kasir tidak punya pilihan toko: toko aktifnya
-selalu tokonya sendiri.
+**Superadmin** (tidak punya Beranda):
 
-**Sidebar Superadmin** mengikuti hierarki yang sama:
+1. Setelah login langsung ke halaman **Toko** (`/stores`). Halaman platform
+   berpindah lewat tab **Toko · Tagihan · Pengaturan platform**; di halaman
+   ini breadcrumb tanpa "Menu" dan tanpa tombol bulat.
+2. Halaman Toko berupa **kartu per toko**: nama, pemilik (peringatan bila
+   belum ada), jumlah pengguna & barang, jenis usaha, tanggal bergabung, masa
+   aktif ("Gratis s.d. … · 12 hari lagi"), status, dan tombol **Buka**. Klik
+   kartu = detail toko. Ada pencarian (nama, pemilik, jenis usaha), chip saring
+   status beserta jumlahnya, dan pita "N tagihan menunggu konfirmasi" ke
+   Tagihan. Kartu diurutkan dari yang perlu tindakan: Habis, Tenggang, Segera
+   habis (≤ 7 hari), lainnya, Nonaktif.
+3. **Warna & ikon kartu = status** (`src/features/stores/status.ts`):
+   **Masa gratis** indigo (hadiah), **Aktif** hijau (centang), **Tenggang**
+   kuning (jam pasir), **Habis** merah (gembok), **Nonaktif** abu-abu (tombol
+   daya). Chip saring memakai titik warna yang sama sebagai keterangan.
+4. **Buka** membuat toko itu menjadi **toko aktif** (cookie) lalu membuka kotak
+   menu berisi menu toko itu saja (Kasir, Penjualan, …, Pengguna). Pita
+   "Melihat toko … [Ganti] [Keluar]" tampil di bawah header; Ganti & Keluar
+   kembali ke halaman Toko. Selama toko aktif dipilih, semua menu bekerja
+   persis seperti untuk Pemilik toko itu, termasuk mencatat transaksi
+   (tercatat atas nama Superadmin). Tanpa toko aktif, halaman toko
+   mengarahkan ke halaman Toko (`requireStore()`).
+5. **Pengguna** dikelola dari dalam toko: buka toko → menu Pengguna (tambah
+   Pemilik/Kasir, reset password, nonaktifkan). Tidak ada lagi daftar pengguna
+   lintas toko. Detail toko hanya menampilkan daftar penggunanya; toko tanpa
+   pemilik punya tombol **Buka toko & tambah pemilik**.
+6. **Detail toko** (Superadmin): status & tombol Buka, pengguna (lihat saja),
+   **Langganan** (masa aktif, tagihan toko itu di menu Tagihan, harga khusus,
+   catat pembayaran langsung), data toko, dan saklar status toko.
 
-- Grup **Platform** selalu tampil: Beranda, Toko (daftar semua toko),
-  Pengguna (semua toko, atau terfilter ke toko aktif).
-- Grup **Toko: <nama toko>** hanya tampil setelah masuk ke sebuah toko, berisi
-  menu operasional toko (Barang, nanti Kasir/Pembelian/Laporan). Tanpa toko
-  aktif menu ini disembunyikan karena halamannya memang mengarahkan kembali
-  ke beranda (`requireStore()`).
-
-Sidebar Pemilik/Kasir tidak berubah (grup Utama, Master Data, Administrasi),
-difilter sesuai permission.
+Pemilik/Kasir tidak punya pilihan toko: toko aktifnya selalu tokonya sendiri.
 
 Rencana v2: **langganan per toko** (periode 1 / 3 / 12 bulan, diskon),
 dikelola Superadmin dari halaman toko; lihat §14. Di v1 status toko
@@ -535,14 +549,19 @@ QRIS statis). Pengingat WhatsApp dan QRIS dinamis belum.
   "langganan gratis/bonus" terpisah (dihapus 29 Okt 2026).
 - **Masa tenggang 3 hari** setelah jatuh tempo: toko masih bisa dipakai
   dengan spanduk peringatan. Lewat itu, akses ditutup (§14.3).
-- **Menu "Langganan"** ada di setiap toko, **paling bawah** sidebar,
+- **Menu "Langganan"** ada di setiap toko, **paling akhir** di kotak menu,
   berisi status langganan, pilihan paket, dan riwayat tagihan.
-- **Harga paket** per 1 bulan, 6 bulan, dan 12 bulan diatur Superadmin di
-  menu **Pengaturan** (platform), bukan di kode. Yang disimpan adalah
-  **harga total per periode**; aplikasi menghitung sendiri "setara Rp x/bulan,
-  hemat y %" dibanding paket bulanan.
-- **Harga khusus per toko** (hasil negosiasi tatap muka) juga diatur di
-  Pengaturan; bila ada, harga khusus menggantikan harga standar untuk toko itu.
+- **Harga paket** diatur Superadmin di **Pengaturan platform** (31 Okt
+  2026, susunan sama dengan ArchiPay, tanpa batas pengguna): Superadmin
+  mengisi **harga per bulan** + **diskon 6 bulan** & **diskon 1 tahun** (%).
+  Harga 6 bulan & 1 tahun **dihitung otomatis**
+  (`harga per bulan × N × (100 − diskon) / 100`, `features/subscriptions/pricing.ts`)
+  dan ditampilkan di tabel simulasi; hasilnya disimpan sebagai **harga total
+  per periode** di `subscription_plans`. Pemilik melihat "setara Rp x/bulan,
+  hemat y %" dibanding paket bulanan. Harga per bulan 0 = paket belum dijual.
+- **Harga khusus per toko** (hasil negosiasi tatap muka) diatur di detail
+  toko → Langganan; bila ada, harga khusus menggantikan harga standar untuk
+  toko itu.
 
 ### 14.2 Alur berlangganan
 
@@ -614,10 +633,10 @@ bisa masuk, apa pun status langganannya.
 
 - Spanduk di dalam aplikasi untuk Pemilik mulai **H-7** sebelum masa gratis
   atau langganan habis, dan selama masa tenggang (merah).
-- Beranda Superadmin: kotak **"Akan habis ≤ 7 hari"** dan **"Tagihan menunggu
-  konfirmasi"**; kartu toko menampilkan "Gratis s.d. …" / "Aktif s.d. …" /
-  "Tenggang s.d. …" / "Habis sejak …".
-- Navbar menampilkan masa aktif toko sejak hari pertama ("Gratis s.d. 12 Nov").
+- Halaman Toko Superadmin: chip **"Segera habis"** (≤ 7 hari) dan pita
+  **"Tagihan menunggu konfirmasi"**; kartu toko menampilkan "Gratis s.d. …" /
+  "Aktif s.d. …" / "Habis …, tenggang s.d. …" / "Habis sejak …".
+- Header menampilkan masa aktif toko sejak hari pertama ("Gratis s.d. 12 Nov").
 - WhatsApp ke semua Pemilik toko setiap kali admin memeriksa pembayaran:
   **lunas** (masa aktif diperpanjang sampai tanggal …), **kurang bayar**
   (diterima Rp X, kurang Rp Y), atau **ditolak** (beserta alasan), dengan
@@ -635,7 +654,7 @@ bisa masuk, apa pun status langganannya.
 | `store_plan_prices` | Harga khusus per toko: `store_id`, `months`, `price`, `note` ("negosiasi 12 Nov 2026"). |
 | `subscriptions` | Satu baris per tagihan/periode: `store_id`, `months`, `price` (snapshot), `amount_paid` (Σ diterima), `starts_at`, `ends_at`, `status` (CLAIMED/UNDERPAID/ACTIVE/REJECTED; PENDING & CANCELLED hanya baris lama), `paid_at`, `note`, `rejected_at`, `rejection_note`, `confirmed_by_id`, `created_by_id`. |
 | `subscription_payments` | Satu baris per bukti transfer: `subscription_id`, `store_id`, `status` (PENDING/ACCEPTED/REJECTED), `proof_key` (folder `YYYY-MM/bukti-transfer/…` di R2), `note` (pemilik), `amount_received` & `review_note` (diisi admin), `reviewed_at`, `reviewed_by_id`, `created_by_id`. |
-| `platform_settings` | Satu baris: nomor WA admin, rekening pembayaran (bank, nomor, atas nama), gambar QRIS statis, masa gratis (hari, 28), masa tenggang (hari, 3). |
+| `platform_settings` | Satu baris: nomor WA admin, gambar QRIS statis, masa gratis (hari), masa tenggang (hari, 3), diskon paket 6 bulan & 1 tahun (%, bawaan 10 & 20). Rekening ada di `payment_bank_accounts`. |
 | `stores` (+kolom) | `subscription_until` (timestamp): akhir masa gratis/langganan; diisi saat toko dibuat (= created_at + masa gratis) dan setiap tagihan lunas. |
 
 Harga di `subscriptions` adalah **snapshot**: mengubah harga paket/harga

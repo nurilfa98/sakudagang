@@ -1,37 +1,52 @@
-// Navbar di bagian atas konten.
+// Header di bagian atas setiap halaman setelah login. Isinya dibatasi
+// container yang sama dengan konten, sehingga sejajar di tengah layar.
 //
-//   [≡] | Keuangan > Uang Muka                  [tema] [menu user]
+//   [logo] | Menu > Barang        [toko aktif] [tema] [menu user]
 //
-// - [≡] (SidebarTrigger): di desktop menciutkan sidebar, di HP membuka drawer.
-// - `sticky top-0`: navbar tetap terlihat saat halaman di-scroll.
+// - Logo kembali ke kotak menu di /.
+// - `sticky top-0`: header tetap terlihat saat halaman di-scroll.
+// - [toko aktif] (slot `storeIndicator`): nama toko + masa aktif untuk
+//   Pemilik & Kasir. Superadmin memakai pita di bawah header (ActiveStoreBar).
 // - [tema] (ThemeToggle): pilihan Terang / Gelap / Sistem.
 // - Menu user diterima lewat prop `userMenu` (slot) agar layout bisa
 //   membungkusnya dengan <Suspense>.
-// - PageBreadcrumb membaca URL (usePathname). Di halaman dengan segmen dinamis
-//   seperti /users/[id], URL baru diketahui saat request, jadi breadcrumb
-//   wajib di dalam <Suspense>. Di halaman statis breadcrumb tetap ikut prerender.
+// - Breadcrumb diterima lewat slot `breadcrumb`: isinya bergantung pada role
+//   (halaman platform Superadmin tanpa "Menu") dan URL, jadi layout
+//   membungkusnya dengan <Suspense>.
 //   Referensi: https://nextjs.org/docs/messages/blocking-prerender-client-hook
 
-import { Suspense, type ReactNode } from "react";
-import { Separator } from "@/components/ui/separator";
+import Link from "next/link";
+import type { ReactNode } from "react";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { PageBreadcrumb } from "./page-breadcrumb";
+import { Separator } from "@/components/ui/separator";
+import { Brand } from "./brand";
 
-// `storeIndicator` (slot) = nama toko yang sedang dibuka; untuk Superadmin
-// berisi tombol ganti/keluar toko. Dibungkus <Suspense> oleh layout.
-export function AppHeader({ userMenu, storeIndicator }: { userMenu: ReactNode; storeIndicator: ReactNode }) {
+export function AppHeader({
+  breadcrumb,
+  userMenu,
+  storeIndicator,
+}: {
+  breadcrumb: ReactNode;
+  userMenu: ReactNode;
+  storeIndicator: ReactNode;
+}) {
   return (
-    <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/60">
-      <SidebarTrigger className="-ml-1" />
-      <Separator orientation="vertical" className="mr-2 data-vertical:h-4 data-vertical:self-center" />
-      <Suspense>
-        <PageBreadcrumb />
-      </Suspense>
-      <div className="ml-auto flex min-w-0 items-center gap-2">
-        {storeIndicator}
-        <ThemeToggle />
-        {userMenu}
+    <header className="sticky top-0 z-20 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
+      <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4">
+        <Link
+          href="/"
+          aria-label="Kembali ke menu"
+          className="shrink-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Brand compact />
+        </Link>
+        <Separator orientation="vertical" className="data-vertical:h-4 data-vertical:self-center" />
+        {breadcrumb}
+        <div className="ml-auto flex min-w-0 items-center gap-1">
+          {storeIndicator}
+          <ThemeToggle />
+          {userMenu}
+        </div>
       </div>
     </header>
   );

@@ -1,16 +1,10 @@
 // Penanda toko yang sedang dibuka, di navbar.
 // - Pemilik/Kasir: nama toko + masa aktif ("Gratis s.d. 12 Nov"), agar batas
 //   masa gratis/langganan terlihat sejak hari pertama (BUSINESS-FLOW §14.4).
-// - Superadmin: nama toko + tombol "Ganti" (ke beranda, pilih toko lain) dan
-//   "Keluar" (lepas toko aktif). Tanpa toko aktif: ajakan memilih toko.
-//
-// Server Component: tombol memakai <form action> ke Server Action, tanpa
-// JavaScript tambahan di browser.
+// - Superadmin: tidak tampil; toko yang dibuka ditandai pita di bawah header
+//   (active-store-bar.tsx) dengan tombol Ganti/Keluar.
 
 import { StoreIcon } from "lucide-react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { leaveStore } from "@/features/stores/actions";
 import type { CurrentUser } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { formatShortDate } from "@/lib/dates";
@@ -18,33 +12,13 @@ import type { StoreAccess } from "@/lib/subscription-access";
 import { cn } from "@/lib/utils";
 
 export function ActiveStoreIndicator({ user }: { user: CurrentUser }) {
-  const platformAdmin = can(user, "store:manage");
-
-  if (!user.activeStore) {
-    if (!platformAdmin) return null;
-    return (
-      <span className="hidden text-sm text-muted-foreground sm:inline">Pilih toko di beranda untuk mulai mengelola.</span>
-    );
-  }
+  if (!user.activeStore || can(user, "store:manage")) return null;
 
   return (
     <div className="flex min-w-0 items-center gap-1.5 text-sm">
       <StoreIcon className="size-4 shrink-0 text-brand" />
       <span className="truncate font-medium">{user.activeStore.name}</span>
-      {!user.activeStore.isActive && <span className="hidden text-xs text-muted-foreground sm:inline">(nonaktif)</span>}
       <AccessUntil access={user.activeStore.access} />
-      {platformAdmin && (
-        <>
-          <Button variant="ghost" size="sm" className="h-7 px-2" nativeButton={false} render={<Link href="/" />}>
-            Ganti
-          </Button>
-          <form action={leaveStore}>
-            <Button type="submit" variant="ghost" size="sm" className="h-7 px-2 text-muted-foreground">
-              Keluar
-            </Button>
-          </form>
-        </>
-      )}
     </div>
   );
 }

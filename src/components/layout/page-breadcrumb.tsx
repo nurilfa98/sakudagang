@@ -1,10 +1,11 @@
-// Breadcrumb di navbar, diambil otomatis dari nav-config.ts berdasarkan URL
-// yang sedang dibuka: "Grup menu > Menu", misalnya "Grup > Menu".
+// Breadcrumb di header, diambil otomatis dari nav-config.ts berdasarkan URL
+// yang sedang dibuka: "Menu > Barang".
 //
-// - Nama grup hanya teks (grup tidak punya halaman sendiri).
+// - "Menu" kembali ke kotak menu di / (disembunyikan di HP agar muat),
+//   kecuali di halaman platform Superadmin (Toko, Tagihan, Pengaturan
+//   platform) yang tidak berada di bawah kotak menu.
 // - Di sub-halaman (misal /products/123) nama menu menjadi link untuk
 //   kembali ke daftarnya.
-// - Beranda cukup "Beranda", tanpa grup "Utama".
 //
 // Referensi: https://ui.shadcn.com/docs/components/breadcrumb
 
@@ -20,34 +21,39 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { PRODUCT_NAME } from "@/lib/brand";
-import { isNavActive, NAV_GROUPS } from "./nav-config";
+import { isPlatformPath, matchesPath, MENU_ITEMS, PLATFORM_PAGES } from "./nav-config";
 
-export function PageBreadcrumb() {
+// `platformAdmin` = user Superadmin (dikirim dari layout).
+export function PageBreadcrumb({ platformAdmin = false }: { platformAdmin?: boolean }) {
   const pathname = usePathname();
-  const group = NAV_GROUPS.find((g) => g.items.some((i) => isNavActive(pathname, i.href)));
-  const item = group?.items.find((i) => isNavActive(pathname, i.href));
-
-  if (!group || !item) return <span className="truncate text-sm font-medium">{PRODUCT_NAME}</span>;
+  if (pathname === "/") return null;
+  const platformPage = platformAdmin && isPlatformPath(pathname);
+  const item = platformPage
+    ? PLATFORM_PAGES.find((page) => matchesPath(pathname, page.href))
+    : MENU_ITEMS.find((menu) => matchesPath(pathname, menu.href));
 
   return (
     <Breadcrumb className="min-w-0">
       <BreadcrumbList className="flex-nowrap">
-        {item.href !== "/" && (
+        {!platformPage && (
+          <BreadcrumbItem className="hidden sm:inline-flex">
+            <BreadcrumbLink render={<Link href="/" />}>Menu</BreadcrumbLink>
+          </BreadcrumbItem>
+        )}
+        {item && (
           <>
-            <BreadcrumbItem>{group.label}</BreadcrumbItem>
-            <BreadcrumbSeparator />
+            {!platformPage && <BreadcrumbSeparator className="hidden sm:inline-flex" />}
+            <BreadcrumbItem className="min-w-0">
+              {pathname === item.href ? (
+                <BreadcrumbPage className="truncate font-medium">{item.title}</BreadcrumbPage>
+              ) : (
+                <BreadcrumbLink className="truncate" render={<Link href={item.href} />}>
+                  {item.title}
+                </BreadcrumbLink>
+              )}
+            </BreadcrumbItem>
           </>
         )}
-        <BreadcrumbItem className="min-w-0">
-          {pathname === item.href ? (
-            <BreadcrumbPage className="truncate font-medium">{item.title}</BreadcrumbPage>
-          ) : (
-            <BreadcrumbLink className="truncate" render={<Link href={item.href} />}>
-              {item.title}
-            </BreadcrumbLink>
-          )}
-        </BreadcrumbItem>
       </BreadcrumbList>
     </Breadcrumb>
   );

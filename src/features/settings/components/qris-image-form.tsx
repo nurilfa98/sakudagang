@@ -1,29 +1,31 @@
-// Unggah/hapus gambar QRIS statis (Pengaturan). Gambar tampil dari
-// /api/qris (dilayani server setelah cek login); key gambar dipakai sebagai
-// penanda versi agar browser memuat ulang setelah diganti.
+// Unggah/ganti/hapus gambar QRIS statis (Pengaturan platform), tampilan sama
+// dengan ArchiPay: kotak pratinjau di kiri (gambar QRIS saat ini, atau kotak
+// kosong "Belum ada gambar QRIS"), form di kanan. Gambar dilayani /api/qris
+// setelah cek login; key gambar dipakai sebagai penanda versi agar browser
+// memuat ulang gambar setelah diganti.
 
 "use client";
 
-import { LoaderCircleIcon, Trash2Icon, UploadIcon } from "lucide-react";
-import { startTransition, useActionState, useEffect, useRef, type FormEvent } from "react";
+import { ImageUpIcon, LoaderCircleIcon, Trash2Icon } from "lucide-react";
+import { startTransition, useActionState, useRef, type FormEvent } from "react";
+import { useActionResult } from "@/hooks/use-action-result";
 import { ConfirmButton } from "@/components/confirm-button";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { removeQrisImage, uploadQrisImage } from "@/features/settings/actions";
 import { notify } from "@/lib/notify";
 
 export function QrisImageForm({ imageKey }: { imageKey: string | null }) {
-  const hasImage = imageKey != null;
   const [state, formAction, pending] = useActionState(uploadQrisImage, undefined);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
-  useEffect(() => {
-    if (state?.success) {
-      notify.success("Gambar QRIS disimpan.");
-      if (fileRef.current) fileRef.current.value = "";
-    } else if (state) notify.error(state.message);
-  }, [state]);
+  useActionResult(state, (result) => {
+    if (result.success) {
+      notify.success("Gambar QRIS tersimpan.");
+      formRef.current?.reset();
+    } else notify.error(result.message);
+  });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -39,42 +41,51 @@ export function QrisImageForm({ imageKey }: { imageKey: string | null }) {
 
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-      {hasImage && (
-        // eslint-disable-next-line @next/next/no-img-element -- gambar dilayani route /api/qris
-        <img src={`/api/qris?v=${encodeURIComponent(imageKey ?? "")}`} alt="QRIS saat ini" className="w-40 shrink-0 rounded-md border bg-white" />
-      )}
-      <form onSubmit={handleSubmit} className="flex max-w-xl flex-1 flex-col gap-4">
-        <Field>
-          <FieldLabel htmlFor="qris">{hasImage ? "Ganti gambar QRIS" : "Gambar QRIS"}</FieldLabel>
-          {/* cursor-pointer: aturan UI SakuDagang untuk semua input unggah. */}
-          <Input
-            ref={fileRef}
-            id="qris"
-            name="qris"
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            required
-            className="cursor-pointer file:cursor-pointer"
-          />
-          <FieldDescription>PNG/JPG/WebP maksimal 2 MB. QRIS statis milik merchant SakuDagang; nominal diketik pembayar.</FieldDescription>
-        </Field>
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" variant="outline" disabled={pending}>
-            {pending ? <LoaderCircleIcon className="animate-spin" /> : <UploadIcon />}
-            {pending ? "Mengunggah..." : "Unggah"}
-          </Button>
-          {hasImage && (
-            <ConfirmButton
-              label="Hapus"
-              variant="ghost"
-              icon={<Trash2Icon />}
-              dialogTitle="Hapus gambar QRIS?"
-              dialogDescription="Halaman Langganan toko tidak lagi menampilkan QRIS sampai gambar baru diunggah."
-              confirmLabel="Hapus"
-              onConfirm={handleRemove}
-            />
-          )}
+      {imageKey ? (
+        // eslint-disable-next-line @next/next/no-img-element -- gambar privat lewat route /api/qris
+        <img
+          src={`/api/qris?v=${encodeURIComponent(imageKey)}`}
+          alt="QRIS pembayaran SakuDagang"
+          className="size-48 shrink-0 rounded-lg border bg-white object-contain p-2"
+        />
+      ) : (
+        <div className="flex size-48 shrink-0 items-center justify-center rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+          Belum ada gambar QRIS
         </div>
+      )}
+      <form ref={formRef} onSubmit={handleSubmit} className="flex-1">
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="qris">{imageKey ? "Ganti gambar QRIS" : "Unggah gambar QRIS"}</FieldLabel>
+            {/* cursor-pointer: aturan UI SakuDagang untuk semua input unggah. */}
+            <Input
+              id="qris"
+              name="qris"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              required
+              className="cursor-pointer file:cursor-pointer"
+            />
+            <FieldDescription>QRIS statis dari bank / e-wallet bisnis. PNG, JPG, atau WebP, maks. 2 MB.</FieldDescription>
+          </Field>
+          <Field orientation="horizontal">
+            <Button type="submit" variant="outline" disabled={pending}>
+              {pending ? <LoaderCircleIcon className="animate-spin" /> : <ImageUpIcon />}
+              Simpan gambar
+            </Button>
+            {imageKey && (
+              <ConfirmButton
+                label="Hapus QRIS"
+                variant="ghost"
+                icon={<Trash2Icon />}
+                dialogTitle="Hapus gambar QRIS?"
+                dialogDescription="Halaman Langganan toko tidak lagi menampilkan QRIS sampai gambar baru diunggah."
+                confirmLabel="Hapus"
+                onConfirm={handleRemove}
+              />
+            )}
+          </Field>
+        </FieldGroup>
       </form>
     </div>
   );

@@ -16,8 +16,7 @@ import { Button } from "@/components/ui/button"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 // Desktop: tumpukan toast di pojok kanan bawah. HP: pindah ke atas layar agar
-// tidak tertutup keyboard/tombol aksi di bawah. Batasnya sama dengan sidebar
-// (useIsMobile, < 768px).
+// tidak tertutup keyboard/tombol aksi di bawah. Batasnya useIsMobile (< 768px).
 type ToastSide = "top" | "bottom"
 
 const toast = ToastPrimitive.createToastManager()

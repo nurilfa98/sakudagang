@@ -9,7 +9,8 @@
 "use client";
 
 import { CheckIcon, LoaderCircleIcon, PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
-import { startTransition, useActionState, useEffect, useState, useTransition, type FormEvent } from "react";
+import { startTransition, useActionState, useState, useTransition, type FormEvent } from "react";
+import { useActionResult } from "@/hooks/use-action-result";
 import { ConfirmButton } from "@/components/confirm-button";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError } from "@/components/ui/field";
@@ -60,12 +61,12 @@ function AddForm({ create, onCreated }: { create: CategoryActions["create"]; onC
   const [state, formAction, pending] = useActionState(create, undefined);
   const error = state && !state.success ? state : undefined;
 
-  useEffect(() => {
-    if (state?.success) {
+  useActionResult(state, (result) => {
+    if (result.success) {
       notify.success("Kategori ditambahkan.");
       onCreated();
-    } else if (state && !state.fieldErrors) notify.error(state.message);
-  }, [state, onCreated]);
+    } else if (!result.fieldErrors) notify.error(result.message);
+  });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

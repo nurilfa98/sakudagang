@@ -10,7 +10,8 @@
 import { LoaderCircleIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { startTransition, useActionState, useEffect, useState, type FormEvent } from "react";
+import { startTransition, useActionState, useState, type FormEvent } from "react";
+import { useActionResult } from "@/hooks/use-action-result";
 import { RupiahInput } from "@/components/rupiah-input";
 import { TextField } from "@/components/text-field";
 import { Button } from "@/components/ui/button";
@@ -35,10 +36,9 @@ export function ProductForm({ categories, product }: Props) {
   const error = state && !state.success ? state : undefined;
   const fieldError = (name: string) => error?.fieldErrors?.[name]?.[0];
 
-  useEffect(() => {
-    if (!state) return;
-    if (!state.success) {
-      if (!state.fieldErrors) notify.error(state.message);
+  useActionResult(state, (result) => {
+    if (!result.success) {
+      if (!result.fieldErrors) notify.error(result.message);
       return;
     }
     if (product) {
@@ -47,7 +47,7 @@ export function ProductForm({ categories, product }: Props) {
       notify.success("Barang berhasil ditambahkan.");
       router.push("/products");
     }
-  }, [state, product, router]);
+  });
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

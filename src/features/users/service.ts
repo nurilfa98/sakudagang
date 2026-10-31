@@ -3,8 +3,9 @@
 // Siapa boleh mengelola siapa (docs/BUSINESS-FLOW.md §2):
 // - SUPERADMIN tidak pernah bisa dikelola dari aplikasi (hanya script).
 // - OWNER dikelola oleh pemegang user:manage-owner (Superadmin).
-// - CASHIER dikelola oleh pemegang user:manage-cashier di toko yang sama;
-//   Superadmin (tanpa toko) boleh untuk toko mana pun.
+// - CASHIER dikelola oleh pemegang user:manage-cashier di toko yang sama.
+// - Superadmin mengelola pengguna HANYA di toko yang sedang dibukanya (toko
+//   aktif), pola sama dengan ArchiPay: buka toko → menu Pengguna.
 // - Siapa pun boleh MENGUBAH DATA DIRINYA SENDIRI (nama, email, WhatsApp)
 //   lewat "Profile"; nonaktifkan/reset password diri sendiri tetap tidak
 //   boleh (ganti password lewat /change-password).
@@ -14,20 +15,27 @@ import { can } from "@/lib/auth/permissions";
 import type { Role } from "@/lib/auth/roles";
 import type { CurrentUser } from "@/lib/auth/dal";
 
-// Pemeriksaan per role/toko cukup role + storeId; pemeriksaan "diri sendiri" butuh id.
-type Actor = Pick<CurrentUser, "role" | "storeId">;
-type ActorWithId = Pick<CurrentUser, "id" | "role" | "storeId">;
+// Pemeriksaan per role/toko cukup role + toko; pemeriksaan "diri sendiri" butuh id.
+type Actor = Pick<CurrentUser, "role" | "storeId" | "activeStore">;
+type ActorWithId = Pick<CurrentUser, "id" | "role" | "storeId" | "activeStore">;
 type Target = { id: string; role: Role; storeId: string | null };
 
 // Role yang boleh diberikan saat membuat pengguna baru.
 export const ASSIGNABLE_ROLES = ["OWNER", "CASHIER"] as const satisfies readonly Role[];
 export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
 
+// Toko tempat actor mengelola pengguna: tokonya sendiri, atau toko yang
+// sedang dibuka Superadmin. null = belum membuka toko (tidak boleh apa-apa).
+export function managedStoreId(actor: Actor) {
+  return actor.storeId ?? actor.activeStore?.id ?? null;
+}
+
 export function canManageRoleInStore(actor: Actor, role: Role, storeId: string | null) {
   if (role === "SUPERADMIN") return false;
+  const scope = managedStoreId(actor);
+  if (!scope || scope !== storeId) return false;
   if (role === "OWNER") return can(actor, "user:manage-owner");
-  if (!can(actor, "user:manage-cashier")) return false;
-  return actor.storeId === null || actor.storeId === storeId;
+  return can(actor, "user:manage-cashier");
 }
 
 // Kelola penuh: ubah data, nonaktifkan, reset password, kirim undangan.
@@ -45,12 +53,13 @@ export function canEditUser(actor: ActorWithId, target: Target) {
 export function canViewUser(actor: ActorWithId, target: Target) {
   if (canEditUser(actor, target)) return true;
   if (target.role === "SUPERADMIN") return false;
-  return can(actor, "user:manage-cashier") && actor.storeId !== null && actor.storeId === target.storeId;
+  const scope = managedStoreId(actor);
+  return can(actor, "user:manage-cashier") && scope !== null && scope === target.storeId;
 }
 
-// Role yang boleh dipilih actor saat menambah pengguna.
+// Role yang boleh dipilih actor saat menambah pengguna di tokonya.
 export function assignableRolesFor(actor: Actor): AssignableRole[] {
-  return ASSIGNABLE_ROLES.filter((role) => canManageRoleInStore(actor, role, actor.storeId));
+  return ASSIGNABLE_ROLES.filter((role) => canManageRoleInStore(actor, role, managedStoreId(actor)));
 }
 
 // "Email syarat login": pemilik/kasir yang tidak punya email tetap butuh email

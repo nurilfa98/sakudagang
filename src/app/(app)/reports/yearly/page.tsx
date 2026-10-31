@@ -41,9 +41,11 @@ export default function YearlyReportPage({ searchParams }: PageProps<"/reports/y
 
 async function YearlyReportContent({ searchParams }: Pick<PageProps<"/reports/yearly">, "searchParams">) {
   const actor = await requireStore("report:view");
+  // searchParams dibaca SEBELUM new Date() (lihat reports/monthly/page.tsx).
+  const period = parseReportPeriod(await searchParams);
   const today = zonedDateString(new Date());
   const currentYear = Number(today.slice(0, 4));
-  const year = parseReportPeriod(await searchParams).year ?? currentYear;
+  const year = period.year ?? currentYear;
   const range = yearRange(year);
 
   const [totals, breakdown, topProducts, categories, years] = await Promise.all([
