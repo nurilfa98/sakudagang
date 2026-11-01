@@ -5,11 +5,18 @@
 // teks + angka (untuk mengurutkan) ke data table.
 
 import "server-only";
-import { and, asc, count, desc, eq, exists, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, gt, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { io } from "next/cache";
-import { formatDateTime, formatShortDate, zonedPeriodRange } from "@/lib/dates";
+import { formatDateTime, formatMonthYear, formatShortDate, zonedPeriodRange } from "@/lib/dates";
 import { db } from "@/lib/db";
-import { stores, storePlanPrices, subscriptionPayments, subscriptionPlans, subscriptions } from "@/lib/db/schema";
+import {
+  stores,
+  storePlanPrices,
+  subscriptionPayments,
+  subscriptionPlans,
+  subscriptionReliefs,
+  subscriptions,
+} from "@/lib/db/schema";
 import { getPlatformSettings } from "@/lib/platform-settings";
 import { getStoreAccess, type StoreAccess } from "@/lib/subscription-access";
 import {
@@ -17,6 +24,7 @@ import {
   PLAN_MONTHS,
   type PaymentStatus,
   type PlanMonths,
+  type ReliefStatus,
   type SubscriptionStatus,
 } from "./constants";
 import type { SubscriptionFilters } from "./schemas";
@@ -300,6 +308,102 @@ export async function getPaymentProof(id: string) {
     .where(eq(subscriptionPayments.id, id))
     .limit(1);
   return row ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Perlindungan bulan sepi (BUSINESS-FLOW §14.8)
+// ---------------------------------------------------------------------------
+
+export type ReliefItem = {
+  id: string;
+  periodLabel: string; // "Oktober 2026"
+  revenue: number;
+  baselineRevenue: number;
+  dropPercent: number | null; // negatif = omzet naik
+  status: ReliefStatus;
+  days: number;
+  untilAfterLabel: string | null;
+  revokeNote: string | null;
+};
+
+export type StoreReliefState = {
+  // Paket 6/12 bulan yang sedang berjalan (atau berikutnya) beserta aturannya.
+  current: {
+    months: PlanMonths;
+    periodLabel: string;
+    days: number;
+    dropPercent: number;
+    max: number;
+    used: number;
+  } | null;
+  history: ReliefItem[]; // terbaru dulu
+};
+
+const RELIEF_HISTORY_LIMIT = 24;
+
+export async function getStoreReliefState(storeId: string): Promise<StoreReliefState> {
+  await io();
+  const [[current], rows] = await Promise.all([
+    db
+      .select({
+        id: subscriptions.id,
+        months: subscriptions.months,
+        startsAt: subscriptions.startsAt,
+        endsAt: subscriptions.endsAt,
+        reliefDays: subscriptions.reliefDays,
+        reliefDropPercent: subscriptions.reliefDropPercent,
+        reliefMax: subscriptions.reliefMax,
+        used: sql<number>`(select count(*) from ${subscriptionReliefs} where ${subscriptionReliefs.subscriptionId} = ${subscriptions.id} and ${subscriptionReliefs.status} = 'GRANTED')`.mapWith(Number),
+      })
+      .from(subscriptions)
+      .where(
+        and(
+          eq(subscriptions.storeId, storeId),
+          eq(subscriptions.status, "ACTIVE"),
+          isNotNull(subscriptions.reliefDays),
+          gt(subscriptions.endsAt, new Date()),
+        ),
+      )
+      .orderBy(asc(subscriptions.startsAt))
+      .limit(1),
+    db
+      .select({
+        id: subscriptionReliefs.id,
+        periodYear: subscriptionReliefs.periodYear,
+        periodMonth: subscriptionReliefs.periodMonth,
+        revenue: subscriptionReliefs.revenue,
+        baselineRevenue: subscriptionReliefs.baselineRevenue,
+        dropPercent: subscriptionReliefs.dropPercent,
+        status: subscriptionReliefs.status,
+        days: subscriptionReliefs.days,
+        untilAfter: subscriptionReliefs.untilAfter,
+        revokeNote: subscriptionReliefs.revokeNote,
+      })
+      .from(subscriptionReliefs)
+      .where(eq(subscriptionReliefs.storeId, storeId))
+      .orderBy(desc(subscriptionReliefs.periodYear), desc(subscriptionReliefs.periodMonth))
+      .limit(RELIEF_HISTORY_LIMIT),
+  ]);
+
+  return {
+    current:
+      current && current.startsAt && current.endsAt && current.reliefDropPercent != null && current.reliefMax != null
+        ? {
+            months: current.months as PlanMonths,
+            periodLabel: `${formatShortDate(current.startsAt)} - ${formatShortDate(current.endsAt)}`,
+            days: current.reliefDays!,
+            dropPercent: current.reliefDropPercent,
+            max: current.reliefMax,
+            used: current.used,
+          }
+        : null,
+    history: rows.map(({ periodYear, periodMonth, untilAfter, ...row }) => ({
+      ...row,
+      status: row.status as ReliefStatus,
+      periodLabel: formatMonthYear(periodYear, periodMonth),
+      untilAfterLabel: untilAfter ? formatShortDate(untilAfter) : null,
+    })),
+  };
 }
 
 // Tahun yang punya tagihan, untuk pilihan filter.

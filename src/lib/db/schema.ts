@@ -129,7 +129,9 @@ export const users = pgTable(
 // ---------------------------------------------------------------------------
 
 // Semua tabel bisnis terikat satu toko (multi-tenant). Setiap query WAJIB
-// memfilter store_id (lihat requireStore di lib/auth/dal.ts).
+// memfilter store_id (lihat requireStore di lib/auth/dal.ts). Tabel baru yang
+// memakai storeRef() WAJIB ditambahkan ke deleteStore (features/stores/actions.ts),
+// kalau tidak, hapus toko gagal karena foreign key.
 const storeRef = () =>
   varchar("store_id", { length: 36 })
     .notNull()
@@ -598,6 +600,15 @@ export const platformSettings = pgTable("platform_settings", {
   // Superadmin menyimpan Harga paket (features/subscriptions/pricing.ts).
   discount6: integer("discount_6").notNull().default(10),
   discount12: integer("discount_12").notNull().default(20),
+  // Perlindungan bulan sepi paket 6 bulan & 1 tahun (BUSINESS-FLOW §14.8):
+  // tambahan masa aktif (hari; 0 = tidak ditawarkan) bila omzet sebulan turun
+  // ≥ relief_drop_percent dari rata-rata 3 bulan sebelumnya, paling banyak
+  // relief_max_6 / relief_max_12 kali per paket. Disalin ke tagihan saat
+  // tagihan dibuat, jadi perubahan di sini hanya berlaku untuk paket baru.
+  reliefDays: integer("relief_days").notNull().default(10),
+  reliefDropPercent: integer("relief_drop_percent").notNull().default(20),
+  reliefMax6: integer("relief_max_6").notNull().default(1),
+  reliefMax12: integer("relief_max_12").notNull().default(2),
   updatedAt: updatedAt(),
 });
 
@@ -668,6 +679,12 @@ export const subscriptions = pgTable(
     // alasan, tampil ke pemilik dan tersimpan sebagai jejak bila ada perselisihan.
     rejectedAt: timestamptz("rejected_at"),
     rejectionNote: varchar("rejection_note", { length: 255 }),
+    // SNAPSHOT aturan perlindungan bulan sepi saat tagihan dibuat (§14.8):
+    // hari tambahan, batas penurunan omzet (%), dan jatah per paket. Null =
+    // paket ini tanpa perlindungan (paket 1 bulan, atau dibuat sebelum fitur ada).
+    reliefDays: smallint("relief_days"),
+    reliefDropPercent: smallint("relief_drop_percent"),
+    reliefMax: smallint("relief_max"),
     createdById: userRef("created_by_id").notNull(),
     confirmedById: userRef("confirmed_by_id"),
     createdAt: createdAt(),
@@ -715,5 +732,48 @@ export const subscriptionPayments = pgTable(
     index("subscription_payments_subscription_idx").on(t.subscriptionId),
     index("subscription_payments_status_idx").on(t.status),
     check("subscription_payments_status_check", sql`${t.status} IN ('PENDING', 'ACCEPTED', 'REJECTED')`),
+  ],
+);
+
+// Penilaian perlindungan bulan sepi (BUSINESS-FLOW §14.8): satu baris per toko
+// per bulan kalender yang dinilai, dibuat cron harian untuk bulan sebelumnya
+// (features/subscriptions/reliefs.ts). Angka omzet disimpan apa adanya saat
+// dinilai dan tidak dihitung ulang walau transaksi lama berubah. GRANTED =
+// masa aktif toko ditambah `days`; REVOKED = dibatalkan Superadmin (hari
+// dikurangkan lagi). NOT_MET (penurunan kurang), QUOTA_USED (jatah habis),
+// NO_DATA (belum ada data penjualan 3 bulan) disimpan sebagai jejak.
+export const subscriptionReliefs = pgTable(
+  "subscription_reliefs",
+  {
+    id: id(),
+    storeId: storeRef(),
+    // Paket 6/12 bulan yang masa aktifnya mencakup penuh bulan yang dinilai.
+    subscriptionId: varchar("subscription_id", { length: 36 })
+      .notNull()
+      .references(() => subscriptions.id),
+    periodYear: smallint("period_year").notNull(),
+    periodMonth: smallint("period_month").notNull(),
+    // Omzet bulan yang dinilai & rata-rata omzet 3 bulan sebelumnya.
+    revenue: rupiah("revenue").notNull(),
+    baselineRevenue: rupiah("baseline_revenue").notNull(),
+    // Penurunan (%) dibulatkan ke bawah; negatif bila omzet naik. Null bila NO_DATA.
+    dropPercent: integer("drop_percent"),
+    status: varchar("status", { length: 15 }).notNull(),
+    // Hari yang ditambahkan (0 bila tidak diberikan) & masa aktif sesudahnya.
+    days: smallint("days").notNull().default(0),
+    untilAfter: timestamptz("until_after"),
+    revokedAt: timestamptz("revoked_at"),
+    revokedById: userRef("revoked_by_id"),
+    revokeNote: varchar("revoke_note", { length: 255 }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // Satu penilaian per toko per bulan; cron yang berjalan dua kali tidak dobel.
+    uniqueIndex("subscription_reliefs_store_period_idx").on(t.storeId, t.periodYear, t.periodMonth),
+    index("subscription_reliefs_subscription_idx").on(t.subscriptionId, t.status),
+    check(
+      "subscription_reliefs_status_check",
+      sql`${t.status} IN ('GRANTED', 'REVOKED', 'NOT_MET', 'QUOTA_USED', 'NO_DATA')`,
+    ),
   ],
 );

@@ -1,8 +1,9 @@
 // Halaman /stores/[id]: detail toko.
 // - Superadmin (pola sama dengan ArchiPay): status & tombol Buka, data toko,
-//   langganan (masa aktif, harga khusus, tagihan, catat pembayaran langsung),
+//   langganan (masa aktif, perlindungan bulan sepi + batalkan, harga khusus,
+//   tagihan, catat pembayaran langsung),
 //   daftar pengguna (hanya lihat; pemilik & kasir dikelola dari menu Pengguna
-//   setelah membuka toko), dan saklar status toko.
+//   setelah membuka toko), saklar status toko, dan hapus toko permanen.
 // - Pemilik: data tokonya sendiri + kasir (canEditStore).
 //
 // [id] adalah dynamic segment. Dengan cacheComponents, nilai params baru
@@ -21,6 +22,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DeleteStoreButton } from "@/features/stores/components/delete-store-button";
 import { EnterStoreButton } from "@/features/stores/components/enter-store-button";
 import { accessLabel } from "@/features/stores/components/store-card";
 import { StoreForm } from "@/features/stores/components/store-form";
@@ -32,7 +34,8 @@ import { storeStatusOf } from "@/features/stores/status";
 import { AdminInvoiceForm } from "@/features/subscriptions/components/admin-invoice-form";
 import { StorePricesForm } from "@/features/subscriptions/components/store-prices-form";
 import { PLAN_LABELS } from "@/features/subscriptions/constants";
-import { getStoreSubscriptionState, listPlansForStore } from "@/features/subscriptions/queries";
+import { ReliefHistory } from "@/features/subscriptions/components/relief-history";
+import { getStoreReliefState, getStoreSubscriptionState, listPlansForStore } from "@/features/subscriptions/queries";
 import { RoleBadge, UserStatusBadge } from "@/features/users/components/user-badges";
 import { UsersTable } from "@/features/users/components/users-table";
 import { listUsers } from "@/features/users/queries";
@@ -62,10 +65,11 @@ async function StoreDetailContent({ id }: { id: string }) {
   if (!store) notFound();
 
   const isPlatformAdmin = can(actor, "store:manage");
-  const [users, subscription, plans] = await Promise.all([
+  const [users, subscription, plans, reliefs] = await Promise.all([
     listUsers({ storeId: store.id }),
     isPlatformAdmin ? getStoreSubscriptionState(store.id) : null,
     isPlatformAdmin ? listPlansForStore(store.id) : [],
+    isPlatformAdmin ? getStoreReliefState(store.id) : null,
   ]);
   const hasOwner = users.some((user) => user.isActive && user.role === "OWNER");
   const status = storeStatusOf(store);
@@ -174,6 +178,13 @@ async function StoreDetailContent({ id }: { id: string }) {
               </Button>
             </div>
 
+            {reliefs && (reliefs.current || reliefs.history.length > 0) && (
+              <div className="flex flex-col gap-2 border-t pt-6">
+                <p className="text-sm font-medium">Perlindungan bulan sepi</p>
+                <ReliefHistory state={reliefs} canRevoke />
+              </div>
+            )}
+
             <div className="flex flex-col gap-2 border-t pt-6">
               <p className="text-sm font-medium">Harga khusus toko ini</p>
               <p className="text-sm text-muted-foreground">
@@ -209,8 +220,11 @@ async function StoreDetailContent({ id }: { id: string }) {
             <CardTitle>Status toko</CardTitle>
             <CardDescription>Saklar manual, terpisah dari langganan: nonaktif = semua pengguna toko tidak bisa login.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex flex-col gap-6">
             <StoreStatusActions store={store} />
+            <div className="border-t pt-6">
+              <DeleteStoreButton store={store} />
+            </div>
           </CardContent>
         </Card>
       )}

@@ -65,6 +65,22 @@ export const planPricingSchema = z.object({
   discount12: integerField("Diskon 1 tahun", { min: 0, max: 90 }),
 });
 
+// Perlindungan bulan sepi paket 6 bulan & 1 tahun (Pengaturan platform,
+// BUSINESS-FLOW §14.8). Hari 0 atau jatah 0 = paket itu tanpa perlindungan.
+export const reliefSettingsSchema = z.object({
+  reliefDays: integerField("Tambahan masa aktif", { min: 0, max: 60 }),
+  reliefDropPercent: integerField("Batas penurunan omzet", { min: 1, max: 90 }),
+  reliefMax6: integerField("Jatah paket 6 bulan", { min: 0, max: 6 }),
+  reliefMax12: integerField("Jatah paket 1 tahun", { min: 0, max: 12 }),
+});
+
+// Superadmin membatalkan perlindungan yang sudah diberikan: alasan WAJIB,
+// dikirim ke pemilik.
+export const revokeReliefSchema = z.object({
+  reliefId: z.string().min(1).max(36),
+  reason: z.string().trim().min(5, "Tulis alasan pembatalan (minimal 5 karakter)").max(255),
+});
+
 // Harga khusus per toko: kosong = pakai harga standar (hapus harga khusus).
 const optionalRupiah = (label: string) =>
   z.string().transform((value, ctx) => {

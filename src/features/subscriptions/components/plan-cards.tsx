@@ -5,6 +5,9 @@
 // bayar"). Tagihan baru tercatat saat pemilik mengirim bukti. Pindah menu atau
 // "Ganti paket" cukup kembali ke pilihan paket, tanpa data sampah.
 //
+// Kartu 6 bulan & 1 tahun menampilkan Perlindungan bulan sepi (§14.8) di
+// samping diskon, dengan angka dari Pengaturan platform.
+//
 // Harga yang tampil sudah harga toko ini (harga khusus bila ada,
 // features/subscriptions/queries.ts listPlansForStore); harga yang disimpan
 // dihitung ulang di server saat klaim, bukan dari browser.
@@ -18,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { PLAN_LABELS, type PlanMonths } from "@/features/subscriptions/constants";
 import type { PlanPrice } from "@/features/subscriptions/queries";
+import { reliefRulesFor, type ReliefSettings } from "@/features/subscriptions/relief";
 import { monthlyEquivalent, savingsPercent } from "@/features/subscriptions/service";
 import { PRODUCT_NAME } from "@/lib/brand";
 import { formatRupiah } from "@/lib/format";
@@ -25,23 +29,27 @@ import { formatPhone, whatsAppLink } from "@/lib/phone";
 import { cn } from "@/lib/utils";
 import { ClaimPaymentForm } from "./claim-payment-form";
 import { PaymentInstructions, type PaymentInfo } from "./payment-instructions";
+import { ReliefBenefit } from "./relief-benefit";
 
 export function PlanCards({
   plans,
   canChoose,
   payment,
   storeName,
+  relief,
 }: {
   plans: PlanPrice[];
   canChoose: boolean;
   payment: PaymentInfo;
   storeName: string;
+  relief: ReliefSettings;
 }) {
   const [selected, setSelected] = useState<PlanMonths | null>(null);
   const monthly = plans.find((plan) => plan.months === 1)?.price ?? 0;
   const chosen = selected == null ? null : plans.find((plan) => plan.months === selected);
 
   if (chosen) {
+    const chosenRelief = reliefRulesFor(relief, chosen.months);
     const message = `Halo admin ${PRODUCT_NAME}, saya ingin membayar langganan ${PLAN_LABELS[chosen.months]} sebesar ${formatRupiah(chosen.price)} untuk toko ${storeName}.`;
     return (
       <Card className="border-brand">
@@ -63,6 +71,7 @@ export function PlanCards({
             <p className="text-sm text-muted-foreground">Jumlah yang dibayar</p>
             <p className="font-mono text-3xl font-semibold tabular-nums">{formatRupiah(chosen.price)}</p>
           </div>
+          {chosenRelief && <ReliefBenefit rules={chosenRelief} className="max-w-xl" />}
           <PaymentInstructions payment={payment} />
           <ClaimPaymentForm months={chosen.months} />
           {payment.adminPhone && (
@@ -88,6 +97,7 @@ export function PlanCards({
         const saving = savingsPercent(plan.price, plan.months, monthly);
         const unset = plan.price <= 0;
         const recommended = plan.months === 12 && !unset;
+        const rules = unset ? null : reliefRulesFor(relief, plan.months);
         return (
           <Card key={plan.months} className={cn(recommended && "border-brand")}>
             <CardHeader>
@@ -104,13 +114,14 @@ export function PlanCards({
                     : `Setara ${formatRupiah(monthlyEquivalent(plan.price, plan.months))} per bulan.`}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col">
               <span className="font-mono text-2xl font-semibold tabular-nums">{unset ? "-" : formatRupiah(plan.price)}</span>
               {plan.custom && plan.standardPrice > 0 && plan.standardPrice !== plan.price && (
                 <p className="text-xs text-muted-foreground">
                   Harga standar <span className="line-through">{formatRupiah(plan.standardPrice)}</span>
                 </p>
               )}
+              {rules && <ReliefBenefit rules={rules} className="mt-3" />}
             </CardContent>
             {canChoose && (
               <CardFooter>

@@ -4,9 +4,11 @@ import { ToneBadge, type Tone } from "@/components/tone-badge";
 import type { StoreAccessStatus } from "@/lib/subscription-access";
 import {
   PAYMENT_STATUS_LABELS,
+  RELIEF_STATUS_LABELS,
   STORE_ACCESS_LABELS,
   SUBSCRIPTION_STATUS_LABELS,
   type PaymentStatus,
+  type ReliefStatus,
   type SubscriptionStatus,
 } from "../constants";
 
@@ -43,4 +45,17 @@ export function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
 
 export function SubscriptionStatusBadge({ status }: { status: SubscriptionStatus }) {
   return <ToneBadge tone={SUBSCRIPTION_TONES[status]}>{SUBSCRIPTION_STATUS_LABELS[status]}</ToneBadge>;
+}
+
+// Hasil penilaian perlindungan bulan sepi (§14.8).
+const RELIEF_TONES: Record<ReliefStatus, Tone> = {
+  GRANTED: "success",
+  REVOKED: "danger",
+  NOT_MET: "pending",
+  QUOTA_USED: "warning",
+  NO_DATA: "pending",
+};
+
+export function ReliefStatusBadge({ status }: { status: ReliefStatus }) {
+  return <ToneBadge tone={RELIEF_TONES[status]}>{RELIEF_STATUS_LABELS[status]}</ToneBadge>;
 }

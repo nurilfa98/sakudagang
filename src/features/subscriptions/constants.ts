@@ -58,3 +58,15 @@ export const STORE_ACCESS_LABELS: Record<StoreAccessStatus, string> = {
   EXPIRED: "Langganan habis",
 };
 
+
+// Hasil penilaian perlindungan bulan sepi (subscription_reliefs), §14.8.
+export const RELIEF_STATUSES = ["GRANTED", "REVOKED", "NOT_MET", "QUOTA_USED", "NO_DATA"] as const;
+export type ReliefStatus = (typeof RELIEF_STATUSES)[number];
+
+export const RELIEF_STATUS_LABELS: Record<ReliefStatus, string> = {
+  GRANTED: "Diberikan",
+  REVOKED: "Dibatalkan admin",
+  NOT_MET: "Tidak memenuhi syarat",
+  QUOTA_USED: "Jatah sudah habis",
+  NO_DATA: "Data belum cukup",
+};

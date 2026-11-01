@@ -53,16 +53,10 @@ Lokasi folder diatur di `drizzle.config.ts` (`out: "./database/migrations"`).
 
 ## Riwayat migration
 
+Riwayat lama (`0000_quick_boomer` s.d. `0020_subscription_reliefs`) **direset
+1 November 2026** menjadi satu migration awal, karena aplikasi pindah ke
+database baru yang masih kosong. Riwayat lama tetap bisa dilihat di git.
+
 | File | Isi |
 |---|---|
-| `0000_quick_boomer` | Tabel `roles`, `users`, `user_roles`, `login_attempts`. Nama acak bawaan drizzle-kit, dibiarkan agar riwayat tidak berubah. |
-| `0001_stores` | Tabel `stores` (tenant) dan kolom `users.store_id` (null hanya untuk SUPERADMIN). |
-| `0002_seed_roles` | *Manual (custom):* isi `roles` SUPERADMIN, OWNER, CASHIER. Tidak relevan lagi setelah `0003`, dibiarkan karena sudah dijalankan. |
-| `0003_users_role_column` | Kolom `users.role` (varchar + CHECK) menggantikan tabel `roles` & `user_roles`. *Manual:* salin role lama ke kolom baru sebelum tabel lama dihapus. |
-| `0004_users_phone` | Kolom `users.phone` (nomor WhatsApp, format `62…`) untuk undangan login. |
-| `0005_products` | Tabel `product_categories`, `products`, `stock_movements`. *Manual:* kategori awal untuk toko yang sudah ada. |
-| `0014_purchases` | Tabel `purchases`, `purchase_items` (pembelian / barang masuk) dan `document_sequences` (nomor BL-/JL-/SO- per toko per bulan). |
-| `0015_sales` | Tabel `customers`, `sales`, `sale_items` (kasir). CHECK: bon wajib punya pelanggan. |
-| `0016_credit_payments` | Tabel `credit_payments` (pelunasan bon, bisa dibatalkan dengan status `VOIDED`). |
-| `0017_expenses` | Tabel `expense_categories`, `expenses`. *Manual:* kategori pengeluaran awal untuk toko yang sudah ada. |
-| `0018_stock_takes` | Tabel `stock_takes`, `stock_take_items`. Unique partial index: satu opname `DRAFT` per toko. |
+| `0000_init` | Semua tabel sesuai `src/lib/db/schema.ts` per 1 Nov 2026. *Manual:* baris `platform_settings` (`id = 'default'`) dan tiga paket standar 1/6/12 bulan berharga 0. |

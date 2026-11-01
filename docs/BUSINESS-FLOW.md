@@ -91,7 +91,7 @@ Tiga peran: **Superadmin**, **Pemilik**, dan **Kasir**.
 | Pengguna: buat/nonaktifkan **Pemilik**, reset password | ✓ | | |
 | **Profile**: ubah nama, email, WhatsApp diri sendiri (menu user di header) | ✓ | ✓ | ✓ |
 | Melihat data Pemilik lain di toko yang sama (tanpa mengubah) | ✓ | ✓ | |
-| Toko: buat, ubah data, nonaktifkan (langganan berhenti) | ✓ | ubah data toko sendiri | |
+| Toko: buat, ubah data, nonaktifkan (langganan berhenti), hapus permanen | ✓ | ubah data toko sendiri | |
 | Melihat & mengelola akun Superadmin | script saja | | |
 
 ### 2.1 Hierarki: Superadmin → Toko → Pemilik → Kasir
@@ -494,6 +494,7 @@ yang perlu ditagih.
 
 - Akun **Superadmin** dibuat lewat script saat deployment (`pnpm db:create-superadmin <email> <password> "<Nama>"`), karena tidak ada halaman daftar. Script aman dijalankan ulang (email sudah ada → hanya diperbarui).
 - **Superadmin** membuat **toko** (nama, jenis usaha, alamat, telepon, zona waktu), lalu akun **Pemilik** untuk toko itu: nama, email, password sementara. Superadmin juga yang mereset password / menonaktifkan Pemilik, dan menonaktifkan toko (semua user toko itu tidak bisa login).
+- **Hapus toko** (Superadmin, detail toko → kartu Status toko, di bawah tombol Nonaktifkan): menghapus toko **permanen beserta semua datanya** (akun pemilik & kasir dan catatan login mereka, barang & kategori, mutasi stok, pembelian, penjualan, pelanggan & bon, pengeluaran, stok opname, nomor dokumen, tagihan, pembayaran & berkas bukti transfer, harga khusus, perlindungan bulan sepi). Tidak bisa dibatalkan, jadi Superadmin wajib mengetik ulang nama toko persis sama. Semua dihapus dalam satu transaksi database: gagal di tengah = tidak ada yang terhapus. Untuk sekadar menghentikan akses, pakai Nonaktifkan.
 - **Pemilik** bisa mengubah data tokonya sendiri (nama, alamat, telepon, zona waktu), tetapi tidak bisa membuat toko lain.
 - **Pemilik** membuat akun **Kasir**: nama, email, password sementara. Pemilik bisa menonaktifkan Kasir (tidak bisa login, riwayat transaksinya tetap) dan mereset password.
 - Semua akun baru wajib mengganti password saat login pertama.
@@ -501,6 +502,7 @@ yang perlu ditagih.
 - Akun Superadmin tidak pernah tampil di daftar pengguna.
 - Login dibatasi (rate limit) untuk mencegah tebak password. Sesi "Ingat saya" 14 hari, tanpa itu 12 jam.
 - Setiap transaksi (penjualan, pembelian, pembatalan, opname, pengeluaran) menyimpan siapa pelakunya.
+- **Halaman error & tidak ditemukan.** Halaman yang gagal dimuat menampilkan ilustrasi, "Terjadi kesalahan, coba lagi", tombol **Coba lagi** dan **Ke beranda**, serta kode error. User yang login juga melihat tombol **Hubungi admin platform**: sekali klik mengirim WhatsApp (Fonnte) ke nomor admin di Pengaturan platform berisi pelapor, role, toko, waktu, halaman, kode error & pesannya, lalu tombolnya hilang. Maksimal 1 laporan per user per 30 menit (dicatat di memori server, hilang bila server restart). Halaman 404 hanya berisi ilustrasi dan tombol Ke beranda, tanpa tombol lapor.
 
 ---
 
@@ -654,7 +656,8 @@ bisa masuk, apa pun status langganannya.
 | `store_plan_prices` | Harga khusus per toko: `store_id`, `months`, `price`, `note` ("negosiasi 12 Nov 2026"). |
 | `subscriptions` | Satu baris per tagihan/periode: `store_id`, `months`, `price` (snapshot), `amount_paid` (Σ diterima), `starts_at`, `ends_at`, `status` (CLAIMED/UNDERPAID/ACTIVE/REJECTED; PENDING & CANCELLED hanya baris lama), `paid_at`, `note`, `rejected_at`, `rejection_note`, `confirmed_by_id`, `created_by_id`. |
 | `subscription_payments` | Satu baris per bukti transfer: `subscription_id`, `store_id`, `status` (PENDING/ACCEPTED/REJECTED), `proof_key` (folder `YYYY-MM/bukti-transfer/…` di R2), `note` (pemilik), `amount_received` & `review_note` (diisi admin), `reviewed_at`, `reviewed_by_id`, `created_by_id`. |
-| `platform_settings` | Satu baris: nomor WA admin, gambar QRIS statis, masa gratis (hari), masa tenggang (hari, 3), diskon paket 6 bulan & 1 tahun (%, bawaan 10 & 20). Rekening ada di `payment_bank_accounts`. |
+| `platform_settings` | Satu baris: nomor WA admin, gambar QRIS statis, masa gratis (hari), masa tenggang (hari, 3), diskon paket 6 bulan & 1 tahun (%, bawaan 10 & 20), aturan perlindungan bulan sepi (§14.8). Rekening ada di `payment_bank_accounts`. |
+| `subscription_reliefs` | Hasil penilaian perlindungan bulan sepi, satu baris per toko per bulan (§14.8). |
 | `stores` (+kolom) | `subscription_until` (timestamp): akhir masa gratis/langganan; diisi saat toko dibuat (= created_at + masa gratis) dan setiap tagihan lunas. |
 
 Harga di `subscriptions` adalah **snapshot**: mengubah harga paket/harga
@@ -686,3 +689,57 @@ Dua jenis QRIS:
   usaha, rekening settlement), domain HTTPS publik untuk webhook, kunci API
   di env, pengujian di sandbox. Biaya MDR QRIS dipotong per transaksi,
   dana masuk ke rekening T+1 s.d. T+2.
+
+### 14.8 Perlindungan bulan sepi (paket 6 bulan & 1 tahun)
+
+Status: **disepakati & diimplementasi 1 November 2026** (tabel
+`subscription_reliefs`). Benefit paket panjang selain diskon: saat
+omzet toko sedang turun, masa aktif ditambah otomatis, tanpa pengembalian uang.
+
+- **Syarat**: omzet satu bulan kalender **turun ≥ batas** (bawaan **20%**)
+  dibanding **rata-rata omzet 3 bulan sebelumnya**. Laba **tidak** dipakai
+  (keputusan user 1 Nov 2026), karena mudah dimainkan lewat pencatatan
+  pengeluaran. Omzet = Σ `sales.total` berstatus COMPLETED menurut tanggal
+  transaksi, sama dengan laporan: bon dihitung saat terjadi, penjualan
+  dibatalkan tidak.
+- **Hadiah**: masa aktif (`stores.subscription_until`) ditambah **N hari**
+  (bawaan **10**). Paling banyak **1 kali per paket 6 bulan** dan **2 kali per
+  paket 1 tahun**; jatah tidak dibawa ke paket berikutnya. Paket 1 bulan
+  tidak mendapat perlindungan.
+- **Diatur di Pengaturan platform** (kartu "Perlindungan bulan sepi"): hari
+  tambahan (0 = tidak ditawarkan), batas penurunan (%), jatah 6 bulan &
+  1 tahun (0 = paket itu tanpa perlindungan). Tabel simulasi menunjukkan
+  **diskon efektif maksimal** bila semua jatah terpakai (contoh: diskon 20% +
+  2 × 10 hari ≈ 24,2%).
+- **Aturan dikunci saat tagihan dibuat**: hari, batas, dan jatah disalin ke
+  tagihan (`subscriptions.relief_days`, `relief_drop_percent`, `relief_max`)
+  saat Pemilik menekan "Saya sudah bayar" atau admin mencatat pembayaran
+  langsung. Mengubah Pengaturan tidak mengurangi janji ke toko yang sudah
+  membayar. Tagihan sebelum fitur ini (kolom kosong) tidak mendapat perlindungan.
+- **Penilaian otomatis** oleh cron harian `/api/cron/subscription-reminders`
+  (`features/subscriptions/reliefs.ts`, aturan di `relief.ts`), dijalankan
+  sebelum pengingat H-3/H-1:
+  - Yang dinilai selalu **bulan kalender sebelumnya**; cron pertama di awal
+    bulan yang menilai, berikutnya dilewati (unique toko + bulan), jadi cron
+    yang terlewat sehari tetap menyusul dan tidak ada pemberian dobel.
+  - Hanya bulan yang **seluruhnya masuk masa paket** lunas (`starts_at` ≤ awal
+    bulan dan `ends_at` ≥ akhir bulan). Bulan pertama yang tidak penuh dan
+    hari-hari tambahan di akhir tidak dinilai.
+  - **Data belum cukup** bila salah satu dari 3 bulan pembanding belum
+    sepenuhnya dilalui toko (toko dibuat di tengah bulan) atau tidak punya
+    penjualan sama sekali. Paket yang dibeli tepat setelah masa gratis
+    biasanya baru bisa dinilai mulai bulan ke-4.
+  - Hasil disimpan apa adanya (omzet, rata-rata, % penurunan) dan **tidak
+    dihitung ulang** walau transaksi lama kemudian berubah. Toko nonaktif
+    tidak dinilai.
+- **Pemberitahuan**: WhatsApp ke semua Pemilik saat perlindungan diberikan
+  ("omzet Oktober turun 32%, masa aktif ditambah 10 hari sampai …, sisa jatah
+  1 kali").
+- **Tampilan**: kartu paket 6 bulan & 1 tahun dan panel pembayaran memuat
+  kotak "Perlindungan bulan sepi" (ringkasan + "Lihat syarat"). Halaman
+  Langganan menampilkan jatah paket berjalan dan riwayat penilaian tiap bulan.
+- **Pembatalan oleh Superadmin** (detail toko → Langganan), misalnya bila
+  penjualan sengaja tidak dicatat: alasan wajib, hari tambahan dikurangkan
+  dari masa aktif, Pemilik dikabari lewat WhatsApp. Perlindungan yang
+  dibatalkan tidak dihitung sebagai jatah terpakai.
+

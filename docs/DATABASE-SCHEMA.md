@@ -13,7 +13,7 @@ Konvensi (lihat [ARCHITECTURE.md](./ARCHITECTURE.md) §1 & §5):
 - **Multi-tenant:** semua tabel di §2–§7 punya `store_id` → `stores.id` (NOT NULL) sebagai kolom kedua setelah `id`, dan setiap index pencarian diawali `store_id`. Tidak ditulis ulang di tiap tabel di bawah agar ringkas. Unique constraint yang disebut "unique" berlaku **per toko**: `(store_id, name)`, `(store_id, number)`, dst.
 - Status/enum disimpan `varchar` dengan daftar nilai di `features/*/constants.ts` (bukan enum PostgreSQL, agar menambah nilai tidak butuh migration).
 
-Status: **§0–§7 sudah diimplementasi (migration `0000`–`0005`, `0014`–`0018`).**
+Status: **§0–§7 sudah diimplementasi (migration `0000_init`).**
 
 ---
 
@@ -54,6 +54,15 @@ tabel ini melainkan di tabel `plans` dan `subscriptions` (satu baris per
 periode bayar), lihat BUSINESS-FLOW §14; `is_active` tetap menjadi saklar
 tunggal yang dibaca saat login.
 
+**Hapus toko** (Superadmin, `deleteStore` di `features/stores/actions.ts`)
+menghapus baris toko beserta SEMUA baris ber-`store_id` toko itu di setiap
+tabel, `users` toko itu, dan `login_attempts` milik email mereka, dalam satu
+transaksi (anak dulu, induk terakhir; foreign key tanpa `ON DELETE CASCADE`).
+Keterangan "tidak pernah dihapus" di tabel lain berlaku untuk pemakaian
+normal, bukan untuk penghapusan toko ini. Berkas bukti transfer di storage
+dihapus setelah transaksi berhasil. Tabel baru yang punya `store_id` WAJIB
+ditambahkan ke `deleteStore`.
+
 ## 1. Akun
 
 ### `users`
@@ -74,7 +83,7 @@ tunggal yang dibaca saat login.
 
 Satu user satu role; Owner tidak perlu role CASHIER karena haknya sudah mencakup. Email unik **global** (bukan per toko) karena email adalah identitas login.
 
-**Kenapa `role` kolom varchar, bukan tabel `roles` + `user_roles`?** Template awal (ArchiPay) memakai many-to-many karena satu orang bisa merangkap dua role. SakuDagang tidak butuh itu, jadi disederhanakan (migration `0003_users_role_column`): tanpa join, tanpa seed data, dan konsisten dengan kolom status lain yang disimpan varchar dengan daftar nilai di `constants`. Kalau v2 butuh satu akun untuk banyak toko, bentuknya adalah `store_members (user_id, store_id, role)`, bukan `user_roles`.
+**Kenapa `role` kolom varchar, bukan tabel `roles` + `user_roles`?** Template awal (ArchiPay) memakai many-to-many karena satu orang bisa merangkap dua role. SakuDagang tidak butuh itu, jadi disederhanakan: tanpa join, tanpa seed data, dan konsisten dengan kolom status lain yang disimpan varchar dengan daftar nilai di `constants`. Kalau v2 butuh satu akun untuk banyak toko, bentuknya adalah `store_members (user_id, store_id, role)`, bukan `user_roles`.
 
 Akun SUPERADMIN **tidak punya kolom khusus** di `users`; "tersembunyi"
 diterapkan di query (`features/users/queries.ts` selalu mengecualikan user
@@ -316,7 +325,7 @@ PK gabungan `(store_id, prefix, period_year, period_month)`: nomor berjalan per 
 
 ## 7b. Langganan & pengaturan platform (BUSINESS-FLOW §14)
 
-Sudah diimplementasi (migration `0006_subscriptions.sql`, 28 Okt 2026).
+Sudah diimplementasi (28 Okt 2026; sejak 1 Nov 2026 semua tabel ada di migration `0000_init`).
 
 ### `platform_settings`
 
@@ -328,8 +337,11 @@ Satu baris, `id = 'default'`, dibuat oleh migration. Diubah Superadmin di menu P
 | qris_image_key | varchar(255) null | Key gambar QRIS statis di `lib/storage.ts`; dilayani `/api/qris`. |
 | free_days | integer default 14 | Masa gratis toko baru. |
 | grace_days | integer default 3 | Masa tenggang setelah jatuh tempo. |
-| discount_6 | integer default 10 | Diskon (%) paket 6 bulan dibanding harga per bulan (migration 0019). |
+| discount_6 | integer default 10 | Diskon (%) paket 6 bulan dibanding harga per bulan. |
 | discount_12 | integer default 20 | Diskon (%) paket 1 tahun. Harga di `subscription_plans` dihitung dari harga 1 bulan + diskon ini saat disimpan. |
+| relief_days | integer default 10 | Perlindungan bulan sepi (BUSINESS-FLOW §14.8): tambahan masa aktif (hari); 0 = tidak ditawarkan. |
+| relief_drop_percent | integer default 20 | Batas penurunan omzet (%) dibanding rata-rata 3 bulan sebelumnya. |
+| relief_max_6, relief_max_12 | integer default 1 / 2 | Jatah perlindungan per paket 6 bulan / 1 tahun; 0 = paket itu tanpa perlindungan. |
 
 ### `payment_bank_accounts`
 
@@ -359,13 +371,28 @@ Satu baris per klaim/pembayaran. Baris tercipta saat pemilik menekan "Saya sudah
 | store_id | FK stores | |
 | months | smallint | Periode paket. |
 | price | bigint | SNAPSHOT harga saat tagihan dibuat. |
-| status | varchar(20) | `CLAIMED` ada pembayaran menunggu konfirmasi, `UNDERPAID` kurang bayar (diterima < harga), `ACTIVE` lunas, `REJECTED` ditolak admin (status akhir). `PENDING`/`CANCELLED` hanya baris lama sebelum 29 Okt 2026 (migration 0010 menutup PENDING lama). CHECK constraint. "Habis" dihitung dari `ends_at`. |
+| status | varchar(20) | `CLAIMED` ada pembayaran menunggu konfirmasi, `UNDERPAID` kurang bayar (diterima < harga), `ACTIVE` lunas, `REJECTED` ditolak admin (status akhir). `PENDING`/`CANCELLED` hanya baris lama sebelum 29 Okt 2026. CHECK constraint. "Habis" dihitung dari `ends_at`. |
 | amount_paid | bigint default 0 | Σ `subscription_payments.amount_received` yang diterima; lunas bila ≥ price. |
 | rejected_at, rejection_note | timestamptz / varchar(255) null | Penolakan akhir tagihan oleh admin (alasan tampil ke pemilik); jejak bila ada perselisihan. |
+| relief_days, relief_drop_percent, relief_max | smallint null | SNAPSHOT aturan perlindungan bulan sepi saat tagihan dibuat. Null = tanpa perlindungan (paket 1 bulan, atau tagihan sebelum fitur ada). |
+
+### `subscription_reliefs`
+
+Hasil penilaian perlindungan bulan sepi (BUSINESS-FLOW §14.8), dibuat cron harian untuk bulan sebelumnya. Unique (`store_id`, `period_year`, `period_month`): satu penilaian per toko per bulan. Tidak pernah dihapus.
+
+| Kolom | Tipe | Keterangan |
+|---|---|---|
+| store_id, subscription_id | FK | Toko & paket 6/12 bulan yang mencakup penuh bulan yang dinilai. |
+| period_year, period_month | smallint | Bulan kalender yang dinilai. |
+| revenue, baseline_revenue | bigint | Omzet bulan itu & rata-rata omzet 3 bulan sebelumnya, snapshot saat dinilai. |
+| drop_percent | integer null | Penurunan (%) dibulatkan ke bawah; negatif = naik; null bila `NO_DATA`. |
+| status | varchar(15) | `GRANTED` diberikan, `REVOKED` dibatalkan admin, `NOT_MET` penurunan kurang, `QUOTA_USED` jatah habis, `NO_DATA` data 3 bulan belum cukup. CHECK constraint. |
+| days, until_after | smallint default 0 / timestamptz null | Hari yang ditambahkan & `stores.subscription_until` sesudahnya. |
+| revoked_at, revoked_by_id, revoke_note | | Pembatalan oleh Superadmin (hari dikurangkan lagi dari masa aktif). |
 
 ### `subscription_payments`
 
-Satu baris per bukti transfer / pencatatan pembayaran (migration 0011, data lama disalin dari kolom `proof_key` subscriptions). Tidak pernah dihapus.
+Satu baris per bukti transfer / pencatatan pembayaran. Tidak pernah dihapus.
 
 | Kolom | Tipe | Keterangan |
 |---|---|---|

@@ -4,10 +4,11 @@
 // dilindungi: Server Action bisa dipanggil langsung lewat POST tanpa membuka
 // halamannya.
 //
-// - Superadmin (store:manage): buat, ubah, nonaktifkan toko mana pun.
+// - Superadmin (store:manage): buat, ubah, nonaktifkan, hapus toko mana pun.
 // - Pemilik (store:edit-own): hanya mengubah data tokonya sendiri.
-// - Toko TIDAK dihapus, hanya dinonaktifkan; semua user toko itu otomatis
-//   tidak bisa login (lib/auth/dal.ts mengecek stores.is_active).
+// - Nonaktifkan: semua user toko itu otomatis tidak bisa login
+//   (lib/auth/dal.ts mengecek stores.is_active), data tetap ada.
+// - Hapus (deleteStore): permanen, SEMUA data toko ikut dihapus.
 //
 // Referensi:
 // - node_modules/next/dist/docs/01-app/01-getting-started/07-mutating-data.md
@@ -15,7 +16,7 @@
 
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -23,8 +24,31 @@ import { clearActiveStoreCookie, setActiveStoreCookie } from "@/lib/auth/active-
 import { verifySession } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
-import { expenseCategories, productCategories, stores } from "@/lib/db/schema";
+import {
+  creditPayments,
+  customers,
+  documentSequences,
+  expenseCategories,
+  expenses,
+  loginAttempts,
+  productCategories,
+  products,
+  purchaseItems,
+  purchases,
+  saleItems,
+  sales,
+  stockMovements,
+  stockTakeItems,
+  stockTakes,
+  storePlanPrices,
+  stores,
+  subscriptionPayments,
+  subscriptionReliefs,
+  subscriptions,
+  users,
+} from "@/lib/db/schema";
 import { getPlatformSettings } from "@/lib/platform-settings";
+import { deleteObject } from "@/lib/storage";
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_PRODUCT_CATEGORIES } from "@/lib/store-defaults";
 import { addDays } from "@/lib/subscription-access";
 import type { ActionResult } from "@/types/action-result";
@@ -117,6 +141,91 @@ export async function setStoreActive(storeId: string, active: boolean): Promise<
 
   revalidateStores();
   return { success: true, data: undefined };
+}
+
+// Hapus toko PERMANEN beserta semua datanya (BUSINESS-FLOW §11): pengguna
+// (pemilik & kasir), barang, stok, pembelian, penjualan, bon, pengeluaran,
+// stok opname, tagihan & bukti transfer, harga khusus, perlindungan bulan
+// sepi. Tidak bisa dibatalkan, jadi Superadmin wajib mengetik ulang nama toko
+// persis sama (dicek lagi di sini, bukan hanya di dialog).
+//
+// Semua DELETE dalam satu transaksi, anak dulu baru induk (urutan foreign
+// key). Gagal di tengah = tidak ada yang terhapus. Berkas bukti transfer di
+// storage dihapus SETELAH transaksi berhasil; bila gagal, berkas tertinggal
+// (tidak bisa dibuka lagi karena barisnya sudah tidak ada) dan tercatat di log.
+export async function deleteStore(storeId: string, confirmName: string): Promise<ActionResult> {
+  const actor = await verifySession();
+  if (!can(actor, "store:manage")) return FORBIDDEN;
+
+  const input = z.object({ storeId: storeIdSchema, confirmName: z.string().max(200) }).safeParse({ storeId, confirmName });
+  if (!input.success) return NOT_FOUND;
+  const id = input.data.storeId;
+
+  const deleted = await db.transaction(async (tx) => {
+    // Kunci baris toko: cron/aksi lain yang sedang mengubah toko ini menunggu.
+    const [store] = await tx.select({ name: stores.name }).from(stores).where(eq(stores.id, id)).for("update");
+    if (!store) return NOT_FOUND;
+    if (input.data.confirmName.trim() !== store.name.trim()) {
+      return { success: false as const, message: "Nama toko yang diketik tidak sama." };
+    }
+
+    const proofs = await tx
+      .select({ key: subscriptionPayments.proofKey })
+      .from(subscriptionPayments)
+      .where(and(eq(subscriptionPayments.storeId, id), isNotNull(subscriptionPayments.proofKey)));
+    const storeUsers = await tx.select({ email: users.email }).from(users).where(eq(users.storeId, id));
+
+    // Langganan
+    await tx.delete(subscriptionReliefs).where(eq(subscriptionReliefs.storeId, id));
+    await tx.delete(subscriptionPayments).where(eq(subscriptionPayments.storeId, id));
+    await tx.delete(subscriptions).where(eq(subscriptions.storeId, id));
+    await tx.delete(storePlanPrices).where(eq(storePlanPrices.storeId, id));
+    // Transaksi toko
+    await tx.delete(creditPayments).where(eq(creditPayments.storeId, id));
+    await tx.delete(saleItems).where(eq(saleItems.storeId, id));
+    await tx.delete(sales).where(eq(sales.storeId, id));
+    await tx.delete(customers).where(eq(customers.storeId, id));
+    await tx.delete(purchaseItems).where(eq(purchaseItems.storeId, id));
+    await tx.delete(purchases).where(eq(purchases.storeId, id));
+    await tx.delete(stockTakeItems).where(eq(stockTakeItems.storeId, id));
+    await tx.delete(stockTakes).where(eq(stockTakes.storeId, id));
+    await tx.delete(stockMovements).where(eq(stockMovements.storeId, id));
+    await tx.delete(expenses).where(eq(expenses.storeId, id));
+    await tx.delete(expenseCategories).where(eq(expenseCategories.storeId, id));
+    // Barang
+    await tx.delete(products).where(eq(products.storeId, id));
+    await tx.delete(productCategories).where(eq(productCategories.storeId, id));
+    await tx.delete(documentSequences).where(eq(documentSequences.storeId, id));
+    // Pengguna toko (Superadmin tidak punya store_id, jadi tidak ikut terhapus)
+    // dan catatan percobaan login mereka.
+    if (storeUsers.length > 0) {
+      await tx.delete(loginAttempts).where(
+        inArray(
+          loginAttempts.email,
+          storeUsers.map((user) => user.email),
+        ),
+      );
+    }
+    await tx.delete(users).where(eq(users.storeId, id));
+    await tx.delete(stores).where(eq(stores.id, id));
+
+    return {
+      success: true as const,
+      proofKeys: proofs.flatMap((row) => (row.key ? [row.key] : [])),
+    };
+  });
+  if (!deleted.success) return deleted;
+
+  const failed = (await Promise.allSettled(deleted.proofKeys.map((key) => deleteObject(key)))).filter(
+    (result) => result.status === "rejected",
+  );
+  if (failed.length > 0)
+    console.error(`deleteStore ${id}: ${failed.length} berkas bukti transfer gagal dihapus`, failed);
+
+  // Toko yang dihapus sedang dibuka Superadmin ini → keluar dari toko.
+  if (actor.activeStore?.id === id) await clearActiveStoreCookie();
+  revalidatePath("/", "layout");
+  redirect("/stores");
 }
 
 // ---------------------------------------------------------------------------

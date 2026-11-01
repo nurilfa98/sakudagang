@@ -87,6 +87,13 @@ const dateOnlyFormat = new Intl.DateTimeFormat("id-ID", {
   year: "numeric",
 });
 
+// Bulan kalender → "Oktober 2026" (periode penilaian, laporan bulanan).
+export function formatMonthYear(year: number, month: number) {
+  return monthYearFormat.format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+const monthYearFormat = new Intl.DateTimeFormat("id-ID", { timeZone: "UTC", month: "long", year: "numeric" });
+
 // Tahun & bulan menurut zona waktu perusahaan, misalnya untuk periode
 // nomor transaksi (lib/document-number.ts).
 export function zonedYearMonth(date: Date) {

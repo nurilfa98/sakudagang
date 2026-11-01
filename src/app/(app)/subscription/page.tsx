@@ -5,13 +5,15 @@
 //   pembayaran, form bukti kekurangan, hubungi admin.
 // - Selain itu: pilihan paket → panel pembayaran → "Saya sudah bayar"
 //   (memilih paket tidak menyimpan apa pun). Penolakan terakhir tampil sebagai
-//   pemberitahuan di atas pilihan paket.
+//   pemberitahuan di atas pilihan paket. Kartu 6 bulan & 1 tahun menampilkan
+//   Perlindungan bulan sepi (§14.8).
+// - Perlindungan bulan sepi: jatah paket berjalan + hasil penilaian tiap bulan.
 // - Riwayat tagihan (data table, filter ?status=&year=).
 //
 // allowLocked: ini satu-satunya halaman yang boleh dibuka Pemilik saat toko
 // terkunci (§14.3).
 
-import { LockIcon, XCircleIcon } from "lucide-react";
+import { LockIcon, ShieldCheckIcon, XCircleIcon } from "lucide-react";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { MENU_ITEMS } from "@/components/layout/nav-config";
@@ -21,10 +23,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { InvoiceCard } from "@/features/subscriptions/components/invoice-card";
 import { PlanCards } from "@/features/subscriptions/components/plan-cards";
+import { ReliefHistory } from "@/features/subscriptions/components/relief-history";
 import { StoreAccessBadge } from "@/features/subscriptions/components/subscription-badges";
 import { SubscriptionsTable } from "@/features/subscriptions/components/subscriptions-table";
 import { STORE_ACCESS_LABELS } from "@/features/subscriptions/constants";
 import {
+  getStoreReliefState,
   getStoreSubscriptionState,
   listPayments,
   listPlansForStore,
@@ -61,13 +65,14 @@ async function SubscriptionContent({ searchParams }: Pick<PageProps<"/subscripti
   // ?from=/products: user mengklik menu lain saat toko terkunci (menu-launcher.tsx).
   const fromMenu = MENU_ITEMS.find((item) => item.href === firstParam(params.from));
 
-  const [state, plans, settings, banks, history, years] = await Promise.all([
+  const [state, plans, settings, banks, history, years, reliefs] = await Promise.all([
     getStoreSubscriptionState(actor.storeId),
     listPlansForStore(actor.storeId),
     getPlatformSettings(),
     listBankAccounts(),
     listSubscriptions({ ...filters, storeId: actor.storeId }),
     listSubscriptionYears(actor.storeId),
+    getStoreReliefState(actor.storeId),
   ]);
   if (!state) return null;
   const { access, open, lastRejected } = state;
@@ -129,8 +134,36 @@ async function SubscriptionContent({ searchParams }: Pick<PageProps<"/subscripti
             </Alert>
           )}
           <h2 className="text-sm font-medium text-muted-foreground">Pilih paket</h2>
-          <PlanCards plans={plans} canChoose={canChoose} payment={payment} storeName={actor.activeStore.name} />
+          <PlanCards
+            plans={plans}
+            canChoose={canChoose}
+            payment={payment}
+            storeName={actor.activeStore.name}
+            relief={{
+              reliefDays: settings.reliefDays,
+              reliefDropPercent: settings.reliefDropPercent,
+              reliefMax6: settings.reliefMax6,
+              reliefMax12: settings.reliefMax12,
+            }}
+          />
         </section>
+      )}
+
+      {(reliefs.current || reliefs.history.length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheckIcon className="size-5 text-emerald-600 dark:text-emerald-400" />
+              Perlindungan bulan sepi
+            </CardTitle>
+            <CardDescription>
+              Tambahan masa aktif otomatis untuk paket 6 bulan & 1 tahun saat omzet toko sedang turun.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ReliefHistory state={reliefs} />
+          </CardContent>
+        </Card>
       )}
 
       <section className="flex flex-col gap-3">

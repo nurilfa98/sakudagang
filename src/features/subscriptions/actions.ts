@@ -13,6 +13,9 @@
 //   final). Mencatat pembayaran langsung; mengatur harga paket & harga khusus
 //   (settings:manage). Tidak ada tombol batalkan dan tidak ada langganan
 //   gratis/bonus: semua toko baru sudah mendapat masa gratis dari Pengaturan.
+// - Perlindungan bulan sepi (§14.8): aturannya disalin ke tagihan 6/12 bulan
+//   saat tagihan dibuat; Superadmin mengatur aturan (settings:manage) dan
+//   bisa membatalkan perlindungan yang sudah diberikan (subscription:manage).
 //
 // Perpanjangan dihitung di dalam transaksi dengan baris toko dikunci
 // (SELECT ... FOR UPDATE), supaya dua konfirmasi bersamaan tidak saling
@@ -32,18 +35,20 @@ import {
   storePlanPrices,
   subscriptionPayments,
   subscriptionPlans,
+  subscriptionReliefs,
   subscriptions,
 } from "@/lib/db/schema";
-import { zonedYearMonth } from "@/lib/dates";
+import { formatMonthYear, zonedYearMonth } from "@/lib/dates";
 import { formatRupiah } from "@/lib/format";
 import { getPlatformSettings, PLATFORM_SETTINGS_ID } from "@/lib/platform-settings";
 import { deleteObject, putObject } from "@/lib/storage";
-import { nextPeriod } from "@/lib/subscription-access";
+import { addDays, nextPeriod } from "@/lib/subscription-access";
 import { sendWhatsApp } from "@/lib/whatsapp";
 import type { ActionResult } from "@/types/action-result";
 import { OPEN_SUBSCRIPTION_STATUSES, PLAN_LABELS, PLAN_MONTHS, PROOF_MAX_BYTES, PROOF_TYPES, type PlanMonths } from "./constants";
-import { notifyOwnersOfPaymentOutcome } from "./notifications";
+import { notifyOwnersOfPaymentOutcome, notifyOwnersOfRelief } from "./notifications";
 import { planPrice } from "./pricing";
+import { reliefSnapshot } from "./relief";
 import { listPlansForStore } from "./queries";
 import {
   acceptPaymentSchema,
@@ -51,6 +56,8 @@ import {
   claimPaymentSchema,
   planPricingSchema,
   rejectPaymentSchema,
+  reliefSettingsSchema,
+  revokeReliefSchema,
   storePlanPricesSchema,
 } from "./schemas";
 
@@ -127,6 +134,7 @@ export async function claimSubscriptionPaid(
     isNew = true;
   }
 
+  const settings = await getPlatformSettings();
   const paymentId = crypto.randomUUID();
   const key = proofKey(storeId, paymentId, file.type);
   await putObject(key, new Uint8Array(await file.arrayBuffer()), file.type);
@@ -139,6 +147,8 @@ export async function claimSubscriptionPaid(
           storeId,
           months,
           price, // snapshot
+          // Aturan perlindungan bulan sepi yang dilihat pemilik di kartu paket.
+          ...reliefSnapshot(settings, months),
           status: "CLAIMED",
           createdById: actor.id,
         });
@@ -162,7 +172,6 @@ export async function claimSubscriptionPaid(
   }
 
   // Beri tahu admin; gagal kirim tidak membatalkan klaim.
-  const settings = await getPlatformSettings();
   if (settings.adminPhone) {
     await sendWhatsApp({
       to: settings.adminPhone,
@@ -346,6 +355,7 @@ export async function createSubscriptionForStore(
     return { success: false, message: "Masih ada tagihan toko ini yang belum selesai (menunggu konfirmasi / kurang bayar)." };
   }
 
+  const settings = await getPlatformSettings();
   const created = await db.transaction(async (tx) => {
     const period = await extendStore(tx, storeId, months);
     if (!period) return false;
@@ -357,6 +367,7 @@ export async function createSubscriptionForStore(
       months,
       price: plan.price,
       amountPaid: plan.price,
+      ...reliefSnapshot(settings, months),
       status: "ACTIVE",
       startsAt: period.startsAt,
       endsAt: period.endsAt,
@@ -452,6 +463,88 @@ export async function updatePlanPrices(_prevState: ActionResult | undefined, for
       .insert(platformSettings)
       .values({ id: PLATFORM_SETTINGS_ID, discount6, discount12 })
       .onConflictDoUpdate({ target: platformSettings.id, set: { discount6, discount12 } });
+  });
+
+  revalidateSubscriptionPages();
+  return { success: true, data: undefined };
+}
+
+// Aturan perlindungan bulan sepi (§14.8). Hanya berlaku untuk tagihan yang
+// dibuat sesudahnya; tagihan lama memakai snapshot aturannya sendiri.
+export async function updateReliefSettings(
+  _prevState: ActionResult | undefined,
+  formData: FormData,
+): Promise<ActionResult> {
+  const actor = await verifySession();
+  if (!can(actor, "settings:manage")) return FORBIDDEN;
+
+  const parsed = reliefSettingsSchema.safeParse({
+    reliefDays: formData.get("reliefDays") ?? "",
+    reliefDropPercent: formData.get("reliefDropPercent") ?? "",
+    reliefMax6: formData.get("reliefMax6") ?? "",
+    reliefMax12: formData.get("reliefMax12") ?? "",
+  });
+  if (!parsed.success) return invalid(parsed.error);
+
+  await db
+    .insert(platformSettings)
+    .values({ id: PLATFORM_SETTINGS_ID, ...parsed.data })
+    .onConflictDoUpdate({ target: platformSettings.id, set: parsed.data });
+
+  revalidateSubscriptionPages();
+  return { success: true, data: undefined };
+}
+
+// Batalkan perlindungan yang sudah diberikan (mis. ada indikasi omzet sengaja
+// tidak dicatat): hari tambahan dikurangkan dari masa aktif toko, baris
+// ditandai REVOKED beserta alasan, dan pemilik dikabari. Perlindungan yang
+// dibatalkan tidak dihitung sebagai jatah terpakai.
+export async function revokeRelief(reliefId: string, reason: string): Promise<ActionResult> {
+  const actor = await verifySession();
+  if (!can(actor, "subscription:manage")) return FORBIDDEN;
+
+  const parsed = revokeReliefSchema.safeParse({ reliefId, reason });
+  if (!parsed.success) {
+    return { success: false, message: parsed.error.issues[0]?.message ?? "Periksa kembali isian Anda." };
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const [relief] = await tx
+      .select({
+        id: subscriptionReliefs.id,
+        storeId: subscriptionReliefs.storeId,
+        days: subscriptionReliefs.days,
+        periodYear: subscriptionReliefs.periodYear,
+        periodMonth: subscriptionReliefs.periodMonth,
+      })
+      .from(subscriptionReliefs)
+      .where(and(eq(subscriptionReliefs.id, parsed.data.reliefId), eq(subscriptionReliefs.status, "GRANTED")))
+      .for("update");
+    if (!relief) return null;
+
+    const [store] = await tx
+      .select({ subscriptionUntil: stores.subscriptionUntil })
+      .from(stores)
+      .where(eq(stores.id, relief.storeId))
+      .for("update");
+    if (!store) return null;
+
+    const until = addDays(store.subscriptionUntil, -relief.days);
+    await tx.update(stores).set({ subscriptionUntil: until }).where(eq(stores.id, relief.storeId));
+    await tx
+      .update(subscriptionReliefs)
+      .set({ status: "REVOKED", revokedAt: new Date(), revokedById: actor.id, revokeNote: parsed.data.reason })
+      .where(eq(subscriptionReliefs.id, relief.id));
+    return { ...relief, until };
+  });
+  if (!result) return { success: false, message: "Perlindungan tidak ditemukan atau sudah dibatalkan." };
+
+  await notifyOwnersOfRelief(result.storeId, {
+    kind: "revoked",
+    monthLabel: formatMonthYear(result.periodYear, result.periodMonth),
+    days: result.days,
+    until: result.until,
+    reason: parsed.data.reason,
   });
 
   revalidateSubscriptionPages();

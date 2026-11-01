@@ -1,1 +1,0 @@
-ALTER TABLE "stores" ADD COLUMN "last_reminder_key" varchar(20);

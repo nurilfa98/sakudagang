@@ -1,6 +1,7 @@
 // Halaman /settings (Superadmin): pengaturan platform SakuDagang, susunan
 // sama dengan ArchiPay:
 // - Harga paket: harga per bulan + diskon 6 bulan & 1 tahun (dihitung otomatis).
+// - Perlindungan bulan sepi paket 6 bulan & 1 tahun (BUSINESS-FLOW §14.8).
 // - Masa gratis & tenggang + WhatsApp admin.
 // - Rekening pembayaran.
 // - QRIS statis.
@@ -17,6 +18,7 @@ import { PlatformSettingsForm } from "@/features/settings/components/platform-se
 import { QrisImageForm } from "@/features/settings/components/qris-image-form";
 import { listBankAccounts } from "@/features/settings/queries";
 import { PlanPricesForm } from "@/features/subscriptions/components/plan-prices-form";
+import { ReliefSettingsForm } from "@/features/subscriptions/components/relief-settings-form";
 import { listPlans } from "@/features/subscriptions/queries";
 import { requirePermission } from "@/lib/auth/dal";
 import { getPlatformSettings } from "@/lib/platform-settings";
@@ -66,6 +68,19 @@ async function SettingsContent() {
         </CardHeader>
         <CardContent>
           <PlanPricesForm pricing={pricing} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Perlindungan bulan sepi</CardTitle>
+          <CardDescription>
+            Benefit paket 6 bulan & 1 tahun selain diskon: masa aktif ditambah otomatis bila omzet sebulan toko turun
+            dari rata-rata 3 bulan sebelumnya. Dinilai cron harian di awal bulan dan tampil di kartu paket Pemilik.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ReliefSettingsForm settings={settings} discount6={settings.discount6} discount12={settings.discount12} />
         </CardContent>
       </Card>
 
