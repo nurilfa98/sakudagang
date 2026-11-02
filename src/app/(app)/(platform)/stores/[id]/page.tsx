@@ -42,6 +42,7 @@ import { listUsers } from "@/features/users/queries";
 import { verifySession } from "@/lib/auth/dal";
 import { can } from "@/lib/auth/permissions";
 import { formatRupiah } from "@/lib/format";
+import { getPlatformSettings } from "@/lib/platform-settings";
 
 export const metadata: Metadata = {
   title: "Detail Toko",
@@ -65,12 +66,19 @@ async function StoreDetailContent({ id }: { id: string }) {
   if (!store) notFound();
 
   const isPlatformAdmin = can(actor, "store:manage");
-  const [users, subscription, plans, reliefs] = await Promise.all([
+  const [users, subscription, plans, reliefs, settings] = await Promise.all([
     listUsers({ storeId: store.id }),
     isPlatformAdmin ? getStoreSubscriptionState(store.id) : null,
     isPlatformAdmin ? listPlansForStore(store.id) : [],
     isPlatformAdmin ? getStoreReliefState(store.id) : null,
+    isPlatformAdmin ? getPlatformSettings() : null,
   ]);
+  // Harga paket standar (Pengaturan platform), ditampilkan di form harga khusus.
+  const standardPricing = {
+    monthlyPrice: plans.find((plan) => plan.months === 1)?.standardPrice ?? 0,
+    discount6: settings?.discount6 ?? 0,
+    discount12: settings?.discount12 ?? 0,
+  };
   const hasOwner = users.some((user) => user.isActive && user.role === "OWNER");
   const status = storeStatusOf(store);
   const opened = actor.activeStore?.id === store.id;
@@ -188,9 +196,9 @@ async function StoreDetailContent({ id }: { id: string }) {
             <div className="flex flex-col gap-2 border-t pt-6">
               <p className="text-sm font-medium">Harga khusus toko ini</p>
               <p className="text-sm text-muted-foreground">
-                Isi hanya periode yang dinegosiasikan; periode lain tetap memakai harga standar.
+                Isi harga per bulan dan diskon hasil negosiasi; harga 6 bulan & 1 tahun dihitung otomatis.
               </p>
-              <StorePricesForm storeId={store.id} plans={plans} />
+              <StorePricesForm storeId={store.id} plans={plans} standard={standardPricing} />
             </div>
 
             <div className="flex flex-col gap-2 border-t pt-6">

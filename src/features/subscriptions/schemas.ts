@@ -81,23 +81,13 @@ export const revokeReliefSchema = z.object({
   reason: z.string().trim().min(5, "Tulis alasan pembatalan (minimal 5 karakter)").max(255),
 });
 
-// Harga khusus per toko: kosong = pakai harga standar (hapus harga khusus).
-const optionalRupiah = (label: string) =>
-  z.string().transform((value, ctx) => {
-    if (!value.replace(/\D/g, "")) return null;
-    const result = rupiahField(label, { min: 1 }).safeParse(value);
-    if (!result.success) {
-      for (const issue of result.error.issues) ctx.addIssue({ code: "custom", message: issue.message });
-      return z.NEVER;
-    }
-    return result.data;
-  });
-
+// Harga khusus per toko, pola sama dengan harga paket standar: harga per bulan
+// + diskon 6 bulan & 1 tahun; harga tiap periode dihitung otomatis (pricing.ts).
 export const storePlanPricesSchema = z.object({
   storeId: idParam,
-  price1: optionalRupiah("Harga 1 bulan"),
-  price6: optionalRupiah("Harga 6 bulan"),
-  price12: optionalRupiah("Harga 1 tahun"),
+  monthlyPrice: rupiahField("Harga per bulan", { min: 1 }),
+  discount6: integerField("Diskon 6 bulan", { min: 0, max: 90 }),
+  discount12: integerField("Diskon 1 tahun", { min: 0, max: 90 }),
   note,
 });
 

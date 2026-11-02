@@ -360,7 +360,9 @@ Diatur di Pengaturan; ditampilkan berjajar di panel pembayaran pemilik.
 ### `store_plan_prices`
 
 Harga khusus per toko (negosiasi). Unique (`store_id`, `months`). Kolom `price`,
-`note`. Bila ada, menggantikan harga standar untuk toko itu.
+`note`. Bila ada, menggantikan harga standar untuk toko itu. `price` dihitung
+server dari harga per bulan + diskon yang diisi Superadmin (`pricing.ts`);
+periode yang hasilnya sama dengan harga standar tidak punya baris.
 
 ### `subscriptions`
 

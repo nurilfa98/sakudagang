@@ -125,18 +125,21 @@ function PricingPreview({ pricing }: { pricing: Pricing }) {
   );
 }
 
-function PercentField({
+// Juga dipakai form harga khusus toko (store-prices-form.tsx).
+export function PercentField({
   name,
   label,
   defaultValue,
   onValueChange,
   error,
+  description = "Dibanding membayar bulanan.",
 }: {
   name: string;
   label: string;
   defaultValue: number;
   onValueChange: (value: number) => void;
   error?: string;
+  description?: string;
 }) {
   return (
     <Field data-invalid={!!error}>
@@ -160,7 +163,7 @@ function PercentField({
         />
         <span className="text-sm text-muted-foreground">%</span>
       </div>
-      <FieldDescription>Dibanding membayar bulanan.</FieldDescription>
+      <FieldDescription>{description}</FieldDescription>
       <FieldError>{error}</FieldError>
     </Field>
   );

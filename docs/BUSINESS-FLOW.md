@@ -563,7 +563,13 @@ QRIS statis). Pengingat WhatsApp dan QRIS dinamis belum.
   hemat y %" dibanding paket bulanan. Harga per bulan 0 = paket belum dijual.
 - **Harga khusus per toko** (hasil negosiasi tatap muka) diatur di detail
   toko → Langganan; bila ada, harga khusus menggantikan harga standar untuk
-  toko itu.
+  toko itu. Susunannya sama dengan harga paket (2 Nov 2026): Superadmin
+  mengisi harga per bulan + diskon 6 bulan & 1 tahun, harga tiap paket
+  dihitung otomatis dengan rumus yang sama dan ditampilkan berdampingan
+  dengan harga standar. Paket yang hasilnya sama dengan harga standar tidak
+  disimpan sebagai harga khusus (tetap mengikuti harga standar bila nanti
+  diubah); tombol "Pakai harga standar" + Simpan mengembalikan toko ke harga
+  standar.
 
 ### 14.2 Alur berlangganan
 

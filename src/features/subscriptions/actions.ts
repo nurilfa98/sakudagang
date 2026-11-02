@@ -49,7 +49,7 @@ import { OPEN_SUBSCRIPTION_STATUSES, PLAN_LABELS, PLAN_MONTHS, PROOF_MAX_BYTES, 
 import { notifyOwnersOfPaymentOutcome, notifyOwnersOfRelief } from "./notifications";
 import { planPrice } from "./pricing";
 import { reliefSnapshot } from "./relief";
-import { listPlansForStore } from "./queries";
+import { listPlans, listPlansForStore } from "./queries";
 import {
   acceptPaymentSchema,
   adminSubscriptionSchema,
@@ -551,7 +551,11 @@ export async function revokeRelief(reliefId: string, reason: string): Promise<Ac
   return { success: true, data: undefined };
 }
 
-// Harga khusus satu toko. Nominal kosong = hapus harga khusus periode itu.
+// Harga khusus satu toko: harga per bulan + diskon 6 bulan & 1 tahun, harga
+// tiap periode dihitung di server (pricing.ts) seperti harga paket standar.
+// Periode yang hasilnya SAMA dengan harga standar tidak disimpan sebagai harga
+// khusus (barisnya dihapus), sehingga tetap mengikuti harga standar bila nanti
+// diubah di Pengaturan platform.
 export async function saveStorePlanPrices(
   _prevState: ActionResult | undefined,
   formData: FormData,
@@ -561,20 +565,21 @@ export async function saveStorePlanPrices(
 
   const parsed = storePlanPricesSchema.safeParse({
     storeId: formData.get("storeId"),
-    price1: formData.get("price1") ?? "",
-    price6: formData.get("price6") ?? "",
-    price12: formData.get("price12") ?? "",
+    monthlyPrice: formData.get("monthlyPrice") ?? "",
+    discount6: formData.get("discount6") ?? "",
+    discount12: formData.get("discount12") ?? "",
     note: formData.get("note") ?? "",
   });
   if (!parsed.success) return invalid(parsed.error);
 
   const { storeId, note } = parsed.data;
-  const prices = { 1: parsed.data.price1, 6: parsed.data.price6, 12: parsed.data.price12 } as const;
+  const standard = await listPlans();
 
   await db.transaction(async (tx) => {
     for (const months of PLAN_MONTHS) {
-      const price = prices[months];
-      if (price == null) {
+      const price = planPrice(parsed.data, months);
+      const standardPrice = standard.find((plan) => plan.months === months)?.price ?? 0;
+      if (price === standardPrice) {
         await tx.delete(storePlanPrices).where(and(eq(storePlanPrices.storeId, storeId), eq(storePlanPrices.months, months)));
       } else {
         await tx
