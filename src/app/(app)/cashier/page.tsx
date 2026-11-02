@@ -1,9 +1,16 @@
 // Halaman /cashier: layar penjualan (Kasir & Pemilik, permission sale:create).
 // Daftar barang yang dikirim ke browser TIDAK berisi harga modal.
+//
+// Tombol mengambang "Kembali ke menu" (MenuFab) sengaja tidak tampil di sini
+// agar tidak menutupi bilah Bayar di HP; sebagai gantinya tombol ada di kanan
+// judul.
 
+import { LayoutGridIcon } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Suspense } from "react";
 import { PageHeader } from "@/components/layout/page-header";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { listCustomerOptions } from "@/features/credits/queries";
 import { CashierScreen } from "@/features/sales/components/cashier-screen";
@@ -17,7 +24,16 @@ export const metadata: Metadata = {
 export default function CashierPage() {
   return (
     <>
-      <PageHeader title="Kasir" />
+      <PageHeader
+        title="Kasir"
+        actionInline
+        action={
+          <Button variant="outline" nativeButton={false} render={<Link href="/" />}>
+            <LayoutGridIcon />
+            Kembali ke menu
+          </Button>
+        }
+      />
       <Suspense fallback={<CashierSkeleton />}>
         <CashierContent />
       </Suspense>

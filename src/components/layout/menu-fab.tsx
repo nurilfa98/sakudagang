@@ -1,7 +1,8 @@
 // Tombol mengambang di pojok kanan bawah: kembali ke kotak menu (/), sama
 // seperti klik logo SakuDagang di header. Tidak tampil di halaman menu itu
-// sendiri, di layar Kasir (agar tidak menutupi tombol bayar), dan di halaman
-// platform Superadmin (dari sana Superadmin masuk lewat tombol Buka toko).
+// sendiri, di layar Kasir (agar tidak menutupi tombol bayar; di sana tombolnya
+// ada di kanan judul halaman), dan di halaman platform Superadmin (dari sana
+// Superadmin masuk lewat tombol Buka toko).
 //
 // Client Component karena butuh usePathname(). Di halaman dengan segmen
 // dinamis, URL baru diketahui saat request, jadi layout membungkusnya dengan

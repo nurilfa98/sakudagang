@@ -4,6 +4,7 @@
 //   lewat URL dan diterapkan server (docs/ARCHITECTURE.md §3 "Daftar data").
 // - Tanggal sudah diformat di server (lib/dates.ts khusus server); angka
 //   createdAtTime dipakai untuk mengurutkan.
+// - HP (< md): kartu (MovementCard), 10 dulu lalu +10 saat di-scroll.
 
 "use client";
 
@@ -70,13 +71,18 @@ const qtyColumn = column.accessor("qty", {
   header: "Qty",
   sortFn: "basic",
   meta: { className: "text-right whitespace-nowrap tabular-nums" },
-  cell: ({ row }) => (
-    <span className={cn(row.original.qty > 0 ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300")}>
-      {row.original.qty > 0 ? "+" : ""}
-      {row.original.qty.toLocaleString("id-ID")} {row.original.unit}
-    </span>
-  ),
+  cell: ({ row }) => <QtyLabel row={row.original} />,
 });
+
+// Qty bertanda: masuk hijau (+), keluar merah (dipakai tabel & kartu).
+function QtyLabel({ row }: { row: Row }) {
+  return (
+    <span className={cn(row.qty > 0 ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300")}>
+      {row.qty > 0 ? "+" : ""}
+      {row.qty.toLocaleString("id-ID")} {row.unit}
+    </span>
+  );
+}
 
 const stockAfterColumn = column.accessor("stockAfter", {
   header: "Stok",
@@ -145,6 +151,7 @@ export function StockMovementsTable({
       emptyMessage={activeFilterCount > 0 ? "Tidak ada mutasi pada filter ini." : "Belum ada mutasi stok."}
       activeFilterCount={activeFilterCount}
       pending={pending}
+      renderCard={(row) => <MovementCard row={row} withCost={withCost} />}
       filters={
         <DataTableFilters
           canReset={activeFilterCount > 0}
@@ -175,5 +182,37 @@ export function StockMovementsTable({
         </DataTableFilters>
       }
     />
+  );
+}
+
+// Kartu satu mutasi stok untuk HP. Isinya sama dengan kolom tabel.
+function MovementCard({ row, withCost }: { row: Row; withCost: boolean }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
+      <div className="flex items-start justify-between gap-2">
+        <ToneBadge tone={TYPE_TONES[row.type]}>{STOCK_MOVEMENT_LABELS[row.type]}</ToneBadge>
+        <span className="font-semibold whitespace-nowrap tabular-nums">
+          <QtyLabel row={row} />
+        </span>
+      </div>
+      {row.note && <p className="line-clamp-2 text-sm text-muted-foreground">{row.note}</p>}
+      <div className="flex items-end justify-between gap-2 border-t pt-2 text-xs">
+        <div className="flex min-w-0 flex-col text-muted-foreground">
+          <span>{row.createdAtLabel}</span>
+          <span className="truncate">Oleh {row.createdByName}</span>
+        </div>
+        <div className="flex shrink-0 flex-col items-end tabular-nums">
+          <span>
+            <span className="text-muted-foreground">Stok </span>
+            <span className="font-medium">{row.stockAfter.toLocaleString("id-ID")}</span>
+          </span>
+          {withCost && (
+            <span className="text-muted-foreground">
+              Modal {row.costPrice == null ? "-" : formatRupiah(row.costPrice)}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

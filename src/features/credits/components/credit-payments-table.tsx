@@ -1,9 +1,10 @@
 // Riwayat pelunasan bon (per pelanggan atau per penjualan), terbaru dulu.
 // Pelunasan yang dibatalkan tetap tampil (dicoret) beserta alasannya.
 // Tombol batal hanya pada baris yang boleh dibatalkan user ini; server
-// tetap memeriksa ulang.
+// tetap memeriksa ulang. HP (< md): daftar baris (components/mobile-list.tsx).
 
 import Link from "next/link";
+import { DesktopTable, MobileList, MobileListItem, MobileListRow } from "@/components/mobile-list";
 import { ToneBadge } from "@/components/tone-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CREDIT_PAYMENT_METHOD_LABELS } from "@/features/credits/constants";
@@ -26,7 +27,12 @@ export function CreditPaymentsTable({
     return <p className="py-6 text-center text-sm text-muted-foreground">Belum ada pelunasan.</p>;
   }
 
-  return (
+  const canVoidPayment = (payment: CreditPaymentItem) =>
+    payment.status !== "VOIDED" &&
+    actor.canSettle &&
+    canVoidCreditPayment({ canVoidAll: actor.canVoidAll, actorId: actor.id, today: actor.today, payment });
+
+  const table = (
     <Table>
       <TableHeader>
         <TableRow>
@@ -43,10 +49,7 @@ export function CreditPaymentsTable({
       <TableBody>
         {payments.map((payment) => {
           const voided = payment.status === "VOIDED";
-          const canVoid =
-            !voided &&
-            actor.canSettle &&
-            canVoidCreditPayment({ canVoidAll: actor.canVoidAll, actorId: actor.id, today: actor.today, payment });
+          const canVoid = canVoidPayment(payment);
           return (
             <TableRow key={payment.id}>
               <TableCell className="whitespace-nowrap">
@@ -95,5 +98,56 @@ export function CreditPaymentsTable({
         })}
       </TableBody>
     </Table>
+  );
+
+  return (
+    <>
+      <DesktopTable>{table}</DesktopTable>
+      <MobileList>
+        {payments.map((payment) => {
+          const voided = payment.status === "VOIDED";
+          return (
+            <MobileListItem key={payment.id}>
+              <MobileListRow>
+                <div className="flex min-w-0 flex-col">
+                  <span className={cn("font-medium", voided && "text-muted-foreground line-through")}>
+                    {payment.dateLabel}
+                  </span>
+                  {showSale && (
+                    <Link href={`/sales/${payment.saleId}`} className="font-mono text-xs hover:underline">
+                      {payment.saleNumber}
+                    </Link>
+                  )}
+                </div>
+                <span
+                  className={cn(
+                    "font-semibold whitespace-nowrap tabular-nums",
+                    voided && "text-muted-foreground line-through",
+                  )}
+                >
+                  {formatRupiah(payment.amount)}
+                </span>
+              </MobileListRow>
+              <MobileListRow className="items-center">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  {voided ? (
+                    <ToneBadge tone="danger">Dibatalkan</ToneBadge>
+                  ) : (
+                    <ToneBadge tone={payment.paymentMethod === "QRIS" ? "active" : "pending"}>
+                      {CREDIT_PAYMENT_METHOD_LABELS[payment.paymentMethod]}
+                    </ToneBadge>
+                  )}
+                  <span className="text-xs text-muted-foreground">
+                    {payment.createdByName}, {payment.createdAtLabel}
+                  </span>
+                </div>
+                {canVoidPayment(payment) && <VoidCreditPaymentButton payment={payment} />}
+              </MobileListRow>
+              {voided && <p className="text-xs text-muted-foreground">Dibatalkan: {payment.voidReason}</p>}
+            </MobileListItem>
+          );
+        })}
+      </MobileList>
+    </>
   );
 }

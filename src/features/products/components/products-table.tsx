@@ -6,6 +6,7 @@
 // - Pencarian nama/kategori di browser; filter Kategori/Status/Stok lewat URL
 //   dan diterapkan server (docs/ARCHITECTURE.md §3 "Daftar data").
 // - Seluruh baris bisa diklik lewat link di kolom Nama (hanya bila boleh kelola).
+// - HP (< md): kartu (ProductCard), 10 dulu lalu +10 saat di-scroll.
 
 "use client";
 
@@ -74,21 +75,24 @@ const stockColumn = column.accessor("stock", {
   header: "Stok",
   sortFn: "basic",
   meta: { className: "text-right whitespace-nowrap tabular-nums" },
-  cell: ({ row }) => {
-    const { stock, unit, minStock } = row.original;
-    const low = isLowStock(stock, minStock);
-    return (
-      <span
-        className={cn(
-          low && stock < 0 && "font-medium text-rose-700 dark:text-rose-300",
-          low && stock >= 0 && "font-medium text-amber-700 dark:text-amber-300",
-        )}
-      >
-        {stock.toLocaleString("id-ID")} {unit}
-      </span>
-    );
-  },
+  cell: ({ row }) => <StockLabel row={row.original} />,
 });
+
+// Stok merah bila minus, amber bila ≤ stok minimum (dipakai tabel & kartu).
+function StockLabel({ row }: { row: Row }) {
+  const { stock, unit, minStock } = row;
+  const low = isLowStock(stock, minStock);
+  return (
+    <span
+      className={cn(
+        low && stock < 0 && "font-medium text-rose-700 dark:text-rose-300",
+        low && stock >= 0 && "font-medium text-amber-700 dark:text-amber-300",
+      )}
+    >
+      {stock.toLocaleString("id-ID")} {unit}
+    </span>
+  );
+}
 
 const statusColumn = column.accessor("isActive", {
   header: "Status",
@@ -161,6 +165,7 @@ export function ProductsTable({
       }
       activeFilterCount={activeFilterCount}
       pending={pending}
+      renderCard={(row) => <ProductCard row={row} withCost={withCost} />}
       filters={
         <DataTableFilters
           canReset={activeFilterCount > 0}
@@ -188,5 +193,52 @@ export function ProductsTable({
         </DataTableFilters>
       }
     />
+  );
+}
+
+// Kartu satu barang untuk HP. Seluruh kartu bisa diklik bila boleh kelola
+// (link dibentangkan lewat ::after). Isinya sama dengan kolom tabel.
+function ProductCard({ row, withCost }: { row: Row; withCost: boolean }) {
+  return (
+    <div
+      className={cn(
+        "relative flex flex-col gap-2 rounded-lg border bg-card p-3",
+        row.href && "transition-colors hover:bg-muted/50",
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-col">
+          {row.href ? (
+            <Link href={row.href} className="truncate font-medium after:absolute after:inset-0 hover:underline">
+              {row.name}
+            </Link>
+          ) : (
+            <span className="truncate font-medium">{row.name}</span>
+          )}
+          <span className="text-xs text-muted-foreground">{row.categoryName}</span>
+        </div>
+        {!row.isActive && (
+          <ToneBadge tone="pending" className="text-slate-900 dark:text-slate-100">
+            Nonaktif
+          </ToneBadge>
+        )}
+      </div>
+      <div className="flex items-end justify-between gap-2 border-t pt-2">
+        <div className="flex flex-col text-xs">
+          <span className="text-muted-foreground">Stok</span>
+          <span className="text-sm tabular-nums">
+            <StockLabel row={row} />
+          </span>
+        </div>
+        <div className="flex flex-col items-end text-xs">
+          {withCost && (
+            <span className="text-muted-foreground tabular-nums">
+              Modal {row.costPrice == null ? "-" : formatRupiah(row.costPrice)}
+            </span>
+          )}
+          <span className="text-sm font-semibold whitespace-nowrap tabular-nums">{formatRupiah(row.sellingPrice)}</span>
+        </div>
+      </div>
+    </div>
   );
 }

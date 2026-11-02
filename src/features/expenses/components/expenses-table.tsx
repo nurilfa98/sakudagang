@@ -5,6 +5,7 @@
 // - Total di atas tabel = jumlah semua baris yang dimuat (sesuai filter).
 // - Aksi per baris: ubah (dialog) dan hapus (konfirmasi). Pengeluaran boleh
 //   dihapus karena bukan transaksi stok (BUSINESS-FLOW §7).
+// - HP (< md): kartu (ExpenseCard), 10 dulu lalu +10 saat di-scroll.
 
 "use client";
 
@@ -78,9 +79,14 @@ const actionsColumn = column.display({
   id: "actions",
   header: () => <span className="sr-only">Aksi</span>,
   meta: { className: "w-20" },
-  cell: ({ row }) => (
+  cell: ({ row }) => <ExpenseActions row={row.original} />,
+});
+
+// Tombol ubah & hapus satu pengeluaran (dipakai kolom tabel dan kartu HP).
+function ExpenseActions({ row }: { row: Row }) {
+  return (
     <div className="flex justify-end gap-1">
-      <ExpenseDialog categories={row.original.categories} today={row.original.today} expense={row.original} />
+      <ExpenseDialog categories={row.categories} today={row.today} expense={row} />
       <ConfirmButton
         label=""
         variant="ghost"
@@ -88,18 +94,42 @@ const actionsColumn = column.display({
         icon={<Trash2Icon />}
         ariaLabel="Hapus pengeluaran"
         tooltip="Hapus pengeluaran"
-        dialogTitle={`Hapus pengeluaran ${formatRupiah(row.original.amount)}?`}
-        dialogDescription={`${row.original.categoryName}, ${row.original.dateLabel}. Data dihapus permanen dan laba bersih tanggal itu bertambah lagi.`}
+        dialogTitle={`Hapus pengeluaran ${formatRupiah(row.amount)}?`}
+        dialogDescription={`${row.categoryName}, ${row.dateLabel}. Data dihapus permanen dan laba bersih tanggal itu bertambah lagi.`}
         confirmLabel="Hapus"
         onConfirm={async () => {
-          const result = await deleteExpense(row.original.id);
+          const result = await deleteExpense(row.id);
           if (!result.success) notify.error(result.message);
           else notify.success("Pengeluaran dihapus.");
         }}
       />
     </div>
-  ),
-});
+  );
+}
+
+// Kartu satu pengeluaran untuk HP. Tidak bisa diklik seluruhnya: tombol ubah &
+// hapus tetap terpisah.
+function ExpenseCard({ row }: { row: Row }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-col">
+          <span className="font-medium">{row.categoryName}</span>
+          {row.note && <span className="line-clamp-2 text-sm text-muted-foreground">{row.note}</span>}
+        </div>
+        <span className="font-semibold whitespace-nowrap tabular-nums">{formatRupiah(row.amount)}</span>
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t pt-2">
+        <span className="min-w-0 truncate text-xs text-muted-foreground">
+          {row.dateLabel} · {row.createdByName}
+        </span>
+        <div className="-my-1 -mr-1 shrink-0">
+          <ExpenseActions row={row} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Dibuat sekali di luar komponen (wajib stabil untuk TanStack Table v9).
 const COLUMNS = column.columns([dateColumn, categoryColumn, noteColumn, amountColumn, byColumn, actionsColumn]);
@@ -148,6 +178,7 @@ export function ExpensesTable({
       emptyMessage={activeFilterCount > 0 ? "Tidak ada pengeluaran pada filter ini." : "Belum ada pengeluaran."}
       activeFilterCount={activeFilterCount}
       pending={pending}
+      renderCard={(row) => <ExpenseCard row={row} />}
       filters={
         <DataTableFilters
           canReset={activeFilterCount > 0}

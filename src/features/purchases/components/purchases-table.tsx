@@ -4,6 +4,7 @@
 //   dan diterapkan server (docs/ARCHITECTURE.md §3 "Daftar data").
 // - Pembelian yang dibatalkan tetap tampil, nomornya dicoret.
 // - Seluruh baris bisa diklik lewat link di kolom Nomor.
+// - HP (< md): kartu (PurchaseCard), 10 dulu lalu +10 saat di-scroll.
 
 "use client";
 
@@ -154,6 +155,7 @@ export function PurchasesTable({
       }
       activeFilterCount={activeFilterCount}
       pending={pending}
+      renderCard={(row) => <PurchaseCard row={row} />}
       filters={
         <DataTableFilters
           canReset={activeFilterCount > 0}
@@ -184,5 +186,36 @@ export function PurchasesTable({
         </DataTableFilters>
       }
     />
+  );
+}
+
+// Kartu satu pembelian untuk HP. Seluruh kartu bisa diklik (link dibentangkan
+// lewat ::after). Isinya sama dengan kolom tabel.
+function PurchaseCard({ row }: { row: PurchaseListItem }) {
+  const voided = row.status === "VOIDED";
+  return (
+    <div className="relative flex flex-col gap-2 rounded-lg border bg-card p-3 transition-colors hover:bg-muted/50">
+      <div className="flex items-start justify-between gap-2">
+        <Link
+          href={`/purchases/${row.id}`}
+          className={cn(
+            "font-mono font-medium after:absolute after:inset-0 hover:underline",
+            voided && "text-muted-foreground line-through",
+          )}
+        >
+          {row.number}
+        </Link>
+        <PurchaseStatusBadge status={row.status} />
+      </div>
+      {row.note && <p className="line-clamp-2 text-sm text-muted-foreground">{row.note}</p>}
+      <div className="flex items-end justify-between gap-2 border-t pt-2">
+        <span className="min-w-0 truncate text-xs text-muted-foreground">
+          {row.dateLabel} · {row.itemCount.toLocaleString("id-ID")} barang · {row.createdByName}
+        </span>
+        <span className={cn("font-semibold whitespace-nowrap tabular-nums", voided && "text-muted-foreground line-through")}>
+          {formatRupiah(row.total)}
+        </span>
+      </div>
+    </div>
   );
 }

@@ -4,6 +4,7 @@
 //
 // Pencarian nama toko/catatan di browser; filter Status/Tahun/Toko lewat URL
 // dan diterapkan server (docs/ARCHITECTURE.md §3 "Daftar data").
+// HP (< md): kartu (SubscriptionCard), 10 dulu lalu +10 saat di-scroll.
 
 "use client";
 
@@ -52,16 +53,21 @@ const amountColumn = column.accessor("price", {
   cell: ({ row }) => (
     <div className="flex flex-col items-end">
       <span>{formatRupiah(row.original.price)}</span>
-      {/* Riwayat kurang bayar tetap tampil (juga saat menunggu konfirmasi
-          pelunasan) sampai tagihan lunas, agar admin tahu konteksnya. */}
-      {row.original.amountPaid > 0 && row.original.amountPaid < row.original.price && (
-        <span className="text-xs font-normal text-amber-700 dark:text-amber-300">
-          diterima {formatRupiah(row.original.amountPaid)}, kurang {formatRupiah(row.original.price - row.original.amountPaid)}
-        </span>
-      )}
+      <UnderpaidNote row={row.original} />
     </div>
   ),
 });
+
+// Riwayat kurang bayar tetap tampil (juga saat menunggu konfirmasi pelunasan)
+// sampai tagihan lunas, agar admin tahu konteksnya. Dipakai tabel & kartu.
+function UnderpaidNote({ row }: { row: SubscriptionItem }) {
+  if (!(row.amountPaid > 0 && row.amountPaid < row.price)) return null;
+  return (
+    <span className="text-xs font-normal text-amber-700 dark:text-amber-300">
+      diterima {formatRupiah(row.amountPaid)}, kurang {formatRupiah(row.price - row.amountPaid)}
+    </span>
+  );
+}
 
 const periodColumn = column.accessor((row) => row.periodLabel ?? "", {
   id: "period",
@@ -168,6 +174,7 @@ export function SubscriptionsTable({
       emptyMessage={activeFilterCount > 0 ? "Tidak ada tagihan pada filter ini." : "Belum ada tagihan."}
       activeFilterCount={activeFilterCount}
       pending={pending}
+      renderCard={(row) => <SubscriptionCard row={row} platform={platform} />}
       filters={
         <DataTableFilters
           canReset={activeFilterCount > 0}
@@ -197,5 +204,40 @@ export function SubscriptionsTable({
         </DataTableFilters>
       }
     />
+  );
+}
+
+// Kartu satu tagihan untuk HP. Di halaman Tagihan (platform) ada nama toko dan
+// tombol aksi bila ada pembayaran yang menunggu konfirmasi.
+function SubscriptionCard({ row, platform }: { row: SubscriptionItem; platform: boolean }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate font-medium">{platform ? row.storeName : `Paket ${PLAN_LABELS[row.months]}`}</span>
+          <span className="text-xs text-muted-foreground">
+            {platform && `Paket ${PLAN_LABELS[row.months]} · `}Dibuat {row.createdAtLabel}
+          </span>
+        </div>
+        <SubscriptionStatusBadge status={row.status} />
+      </div>
+      {row.note && <p className="line-clamp-2 text-sm text-muted-foreground">{row.note}</p>}
+      {row.rejectionNote && (
+        <p className="line-clamp-2 text-sm text-rose-700 dark:text-rose-300">Ditolak: {row.rejectionNote}</p>
+      )}
+      <div className="flex items-end justify-between gap-2 border-t pt-2">
+        <div className="flex min-w-0 flex-col text-xs">
+          <span className="text-muted-foreground">Periode</span>
+          <span>{row.periodLabel ?? "-"}</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <div className="flex flex-col items-end">
+            <span className="font-semibold whitespace-nowrap tabular-nums">{formatRupiah(row.price)}</span>
+            <UnderpaidNote row={row} />
+          </div>
+          {platform && row.pendingPayment && <BillingRowActions subscription={row} />}
+        </div>
+      </div>
+    </div>
   );
 }

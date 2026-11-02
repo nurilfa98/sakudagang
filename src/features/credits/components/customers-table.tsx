@@ -3,6 +3,7 @@
 // - Urut sisa piutang terbesar dulu (dari server).
 // - Bon tertua > 30 hari disorot amber (perlu ditagih, BUSINESS-FLOW §10.4).
 // - Pencarian nama/nomor di browser; filter piutang lewat URL (?credit=).
+// - HP (< md): kartu (CustomerCard), 10 dulu lalu +10 saat di-scroll.
 
 "use client";
 
@@ -141,6 +142,7 @@ export function CustomersTable({
       }
       activeFilterCount={activeFilterCount}
       pending={pending}
+      renderCard={(row) => <CustomerCard row={row} />}
       filters={
         <DataTableFilters canReset={activeFilterCount > 0} pending={pending} onReset={() => setFilters({ credit: undefined })}>
           <DataTableFilterSelect
@@ -152,5 +154,41 @@ export function CustomersTable({
         </DataTableFilters>
       }
     />
+  );
+}
+
+// Kartu satu pelanggan untuk HP. Seluruh kartu bisa diklik (link dibentangkan
+// lewat ::after). Isinya sama dengan kolom tabel.
+function CustomerCard({ row }: { row: Row }) {
+  const overdue = (row.ageDays ?? 0) > OVERDUE_DAYS;
+  return (
+    <div className="relative flex flex-col gap-2 rounded-lg border bg-card p-3 transition-colors hover:bg-muted/50">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-col">
+          <Link href={`/credits/${row.id}`} className="truncate font-medium after:absolute after:inset-0 hover:underline">
+            {row.name}
+          </Link>
+          {row.phoneLabel && <span className="text-xs text-muted-foreground tabular-nums">{row.phoneLabel}</span>}
+        </div>
+        {!row.allowCredit && <ToneBadge tone="danger">Tidak boleh bon</ToneBadge>}
+      </div>
+      <div className="flex items-end justify-between gap-2 border-t pt-2">
+        <div className="flex flex-col text-xs">
+          <span className="text-muted-foreground">{row.openCount.toLocaleString("id-ID")} bon aktif</span>
+          {row.oldestOpenLabel && (
+            <span className={cn(overdue ? "font-medium text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
+              Tertua {row.oldestOpenLabel} ({row.ageDays} hari)
+            </span>
+          )}
+        </div>
+        {row.outstanding > 0 ? (
+          <span className="font-semibold whitespace-nowrap text-amber-700 tabular-nums dark:text-amber-300">
+            {formatRupiah(row.outstanding)}
+          </span>
+        ) : (
+          <span className="text-sm text-muted-foreground">Lunas</span>
+        )}
+      </div>
+    </div>
   );
 }

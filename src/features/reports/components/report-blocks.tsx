@@ -1,7 +1,9 @@
 // Blok tampilan laporan (Server Component): ringkasan §10.1, arus uang,
 // tabel rincian per hari/bulan, barang terlaris, dan laba per kategori.
 // Dipakai laporan harian, bulanan, tahunan.
+// Tabel di HP (< md) tampil sebagai daftar baris (components/mobile-list.tsx).
 
+import { DesktopTable, MobileList, MobileListItem, MobileListRow } from "@/components/mobile-list";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { CategoryProfit, TopProduct } from "@/features/reports/queries";
@@ -140,7 +142,7 @@ export function BreakdownTable({ rows, keyHeader }: { rows: (BreakdownRow & { la
     </>
   );
 
-  return (
+  const table = (
     <Table>
       <TableHeader>
         <TableRow>
@@ -169,11 +171,73 @@ export function BreakdownTable({ rows, keyHeader }: { rows: (BreakdownRow & { la
       </TableFooter>
     </Table>
   );
+
+  return (
+    <>
+      <DesktopTable>{table}</DesktopTable>
+      <MobileList>
+        {rows.map((row) => (
+          <BreakdownItem
+            key={row.key}
+            label={row.label}
+            row={row}
+            className={cn(row.omset === 0 && row.netProfit === 0 && "text-muted-foreground")}
+          />
+        ))}
+        <BreakdownItem label="Total" row={total} className="font-semibold" />
+      </MobileList>
+    </>
+  );
+}
+
+// Satu hari/bulan di HP: laba bersih di kanan judul, angka lain di bawahnya.
+function BreakdownItem({
+  label,
+  row,
+  className,
+}: {
+  label: string;
+  row: Omit<BreakdownRow, "key">;
+  className?: string;
+}) {
+  const figures: [string, number][] = [
+    ["Omset", row.omset],
+    ["HPP", row.hpp],
+    ["Laba kotor", row.grossProfit],
+    ["Pengeluaran", row.expenses],
+    ["Penyusutan", row.shrinkage],
+  ];
+  return (
+    <MobileListItem className={className}>
+      <MobileListRow>
+        <span>{label}</span>
+        <span className="text-right">
+          <span className="block text-xs font-normal text-muted-foreground">Laba bersih</span>
+          <span
+            className={cn(
+              "font-semibold whitespace-nowrap tabular-nums",
+              row.netProfit < 0 && "text-rose-700 dark:text-rose-300",
+            )}
+          >
+            {formatRupiah(row.netProfit)}
+          </span>
+        </span>
+      </MobileListRow>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs font-normal">
+        {figures.map(([name, value]) => (
+          <div key={name} className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">{name}</dt>
+            <dd className="tabular-nums">{formatRupiah(value)}</dd>
+          </div>
+        ))}
+      </dl>
+    </MobileListItem>
+  );
 }
 
 export function TopProductsTable({ products }: { products: TopProduct[] }) {
   if (products.length === 0) return <p className="py-6 text-center text-sm text-muted-foreground">Belum ada penjualan.</p>;
-  return (
+  const table = (
     <Table>
       <TableHeader>
         <TableRow>
@@ -197,11 +261,32 @@ export function TopProductsTable({ products }: { products: TopProduct[] }) {
       </TableBody>
     </Table>
   );
+
+  return (
+    <>
+      <DesktopTable>{table}</DesktopTable>
+      <MobileList>
+        {products.map((product) => (
+          <MobileListItem key={product.productId}>
+            <MobileListRow>
+              <div className="flex min-w-0 flex-col">
+                <span className="font-medium">{product.productName}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  Terjual {product.qty.toLocaleString("id-ID")} · omset {formatRupiah(product.omset)}
+                </span>
+              </div>
+              <GrossProfitFigure value={product.grossProfit} />
+            </MobileListRow>
+          </MobileListItem>
+        ))}
+      </MobileList>
+    </>
+  );
 }
 
 export function CategoryProfitTable({ categories }: { categories: CategoryProfit[] }) {
   if (categories.length === 0) return <p className="py-6 text-center text-sm text-muted-foreground">Belum ada penjualan.</p>;
-  return (
+  const table = (
     <Table>
       <TableHeader>
         <TableRow>
@@ -220,5 +305,36 @@ export function CategoryProfitTable({ categories }: { categories: CategoryProfit
         ))}
       </TableBody>
     </Table>
+  );
+
+  return (
+    <>
+      <DesktopTable>{table}</DesktopTable>
+      <MobileList>
+        {categories.map((category) => (
+          <MobileListItem key={category.categoryName}>
+            <MobileListRow>
+              <div className="flex min-w-0 flex-col">
+                <span className="font-medium">{category.categoryName}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">Omset {formatRupiah(category.omset)}</span>
+              </div>
+              <GrossProfitFigure value={category.grossProfit} />
+            </MobileListRow>
+          </MobileListItem>
+        ))}
+      </MobileList>
+    </>
+  );
+}
+
+// Angka laba kotor di kanan baris HP, dengan label kecil di atasnya.
+function GrossProfitFigure({ value }: { value: number }) {
+  return (
+    <span className="shrink-0 text-right">
+      <span className="block text-xs text-muted-foreground">Laba kotor</span>
+      <span className={cn("font-semibold whitespace-nowrap tabular-nums", value < 0 && "text-rose-700 dark:text-rose-300")}>
+        {formatRupiah(value)}
+      </span>
+    </span>
   );
 }

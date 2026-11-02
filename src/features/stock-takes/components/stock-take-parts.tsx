@@ -1,5 +1,6 @@
 // Bagian kecil halaman stok opname: badge status, tombol "Mulai opname",
 // tabel hasil opname yang sudah selesai, dan daftar opname.
+// Tabel di HP (< md) tampil sebagai daftar baris (components/mobile-list.tsx).
 
 "use client";
 
@@ -8,6 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ConfirmButton } from "@/components/confirm-button";
+import { DesktopTable, MobileList, MobileListItem, MobileListRow } from "@/components/mobile-list";
 import { ToneBadge } from "@/components/tone-badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -51,7 +53,7 @@ export function StockTakesList({ stockTakes }: { stockTakes: StockTakeListItem[]
       </p>
     );
   }
-  return (
+  const table = (
     <Table>
       <TableHeader>
         <TableRow>
@@ -93,6 +95,51 @@ export function StockTakesList({ stockTakes }: { stockTakes: StockTakeListItem[]
       </TableBody>
     </Table>
   );
+
+  return (
+    <>
+      <DesktopTable>{table}</DesktopTable>
+      <MobileList>
+        {stockTakes.map((stockTake) => (
+          <MobileListItem key={stockTake.id}>
+            <MobileListRow>
+              <div className="flex min-w-0 flex-col">
+                <Link
+                  href={`/stock-takes/${stockTake.id}`}
+                  className="font-mono font-medium after:absolute after:inset-0 hover:underline"
+                >
+                  {stockTake.number}
+                </Link>
+                <span className="truncate text-xs text-muted-foreground">
+                  {stockTake.dateLabel} · {stockTake.createdByName}
+                </span>
+              </div>
+              <StockTakeStatusBadge status={stockTake.status} />
+            </MobileListRow>
+            <MobileListRow className="text-xs">
+              <span className="text-muted-foreground tabular-nums">
+                Dihitung {stockTake.countedCount} / {stockTake.itemCount}
+              </span>
+              <span className="tabular-nums">
+                <span className="text-muted-foreground">Susut </span>
+                <span className="font-medium">
+                  {stockTake.totalShrinkage == null ? "-" : formatRupiah(stockTake.totalShrinkage)}
+                </span>
+              </span>
+            </MobileListRow>
+          </MobileListItem>
+        ))}
+      </MobileList>
+    </>
+  );
+}
+
+// Warna selisih: kurang = merah, lebih = hijau.
+function differenceClass(difference: number | null) {
+  return cn(
+    (difference ?? 0) < 0 && "text-rose-700 dark:text-rose-300",
+    (difference ?? 0) > 0 && "text-emerald-700 dark:text-emerald-300",
+  );
 }
 
 // Hasil opname selesai: bawaan hanya barang dengan selisih; bisa tampilkan semua.
@@ -111,50 +158,75 @@ export function StockTakeResultTable({ items }: { items: StockTakeItemDetail[] }
       {visible.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">Semua barang yang dihitung cocok dengan sistem.</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Barang</TableHead>
-              <TableHead className="hidden text-right sm:table-cell">Sistem</TableHead>
-              <TableHead className="hidden text-right sm:table-cell">Fisik</TableHead>
-              <TableHead className="text-right">Selisih</TableHead>
-              <TableHead className="hidden md:table-cell">Alasan</TableHead>
-              <TableHead className="text-right">Susut</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <>
+          <DesktopTable>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Barang</TableHead>
+                  <TableHead className="hidden text-right sm:table-cell">Sistem</TableHead>
+                  <TableHead className="hidden text-right sm:table-cell">Fisik</TableHead>
+                  <TableHead className="text-right">Selisih</TableHead>
+                  <TableHead className="hidden md:table-cell">Alasan</TableHead>
+                  <TableHead className="text-right">Susut</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visible.map((item) => (
+                  <TableRow key={item.productId}>
+                    <TableCell>
+                      <Link href={`/products/${item.productId}`} className="font-medium hover:underline">
+                        {item.productName}
+                      </Link>
+                      <p className="text-xs text-muted-foreground">
+                        {item.reason ? STOCK_TAKE_REASON_LABELS[item.reason] : item.categoryName}
+                        {item.note && ` · ${item.note}`}
+                      </p>
+                    </TableCell>
+                    <TableCell className="hidden text-right tabular-nums sm:table-cell">{item.systemQty}</TableCell>
+                    <TableCell className="hidden text-right tabular-nums sm:table-cell">{item.physicalQty}</TableCell>
+                    <TableCell className={cn("text-right font-medium tabular-nums", differenceClass(item.difference))}>
+                      {(item.difference ?? 0) > 0 ? `+${item.difference}` : item.difference} {item.unit}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {item.reason ? STOCK_TAKE_REASON_LABELS[item.reason] : "-"}
+                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap tabular-nums">
+                      {item.shrinkageValue ? formatRupiah(item.shrinkageValue) : "-"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </DesktopTable>
+          <MobileList>
             {visible.map((item) => (
-              <TableRow key={item.productId}>
-                <TableCell>
-                  <Link href={`/products/${item.productId}`} className="font-medium hover:underline">
+              <MobileListItem key={item.productId}>
+                <MobileListRow>
+                  <Link href={`/products/${item.productId}`} className="min-w-0 font-medium hover:underline">
                     {item.productName}
                   </Link>
-                  <p className="text-xs text-muted-foreground">
-                    {item.reason ? STOCK_TAKE_REASON_LABELS[item.reason] : item.categoryName}
-                    {item.note && ` · ${item.note}`}
-                  </p>
-                </TableCell>
-                <TableCell className="hidden text-right tabular-nums sm:table-cell">{item.systemQty}</TableCell>
-                <TableCell className="hidden text-right tabular-nums sm:table-cell">{item.physicalQty}</TableCell>
-                <TableCell
-                  className={cn(
-                    "text-right font-medium tabular-nums",
-                    (item.difference ?? 0) < 0 && "text-rose-700 dark:text-rose-300",
-                    (item.difference ?? 0) > 0 && "text-emerald-700 dark:text-emerald-300",
-                  )}
-                >
-                  {(item.difference ?? 0) > 0 ? `+${item.difference}` : item.difference} {item.unit}
-                </TableCell>
-                <TableCell className="hidden md:table-cell">
-                  {item.reason ? STOCK_TAKE_REASON_LABELS[item.reason] : "-"}
-                </TableCell>
-                <TableCell className="text-right whitespace-nowrap tabular-nums">
-                  {item.shrinkageValue ? formatRupiah(item.shrinkageValue) : "-"}
-                </TableCell>
-              </TableRow>
+                  <span className={cn("font-semibold whitespace-nowrap tabular-nums", differenceClass(item.difference))}>
+                    {(item.difference ?? 0) > 0 ? `+${item.difference}` : item.difference} {item.unit}
+                  </span>
+                </MobileListRow>
+                <span className="text-xs text-muted-foreground">
+                  {item.reason ? STOCK_TAKE_REASON_LABELS[item.reason] : item.categoryName}
+                  {item.note && ` · ${item.note}`}
+                </span>
+                <MobileListRow className="text-xs">
+                  <span className="text-muted-foreground tabular-nums">
+                    Sistem {item.systemQty} · fisik {item.physicalQty}
+                  </span>
+                  <span className="tabular-nums">
+                    <span className="text-muted-foreground">Susut </span>
+                    <span className="font-medium">{item.shrinkageValue ? formatRupiah(item.shrinkageValue) : "-"}</span>
+                  </span>
+                </MobileListRow>
+              </MobileListItem>
             ))}
-          </TableBody>
-        </Table>
+          </MobileList>
+        </>
       )}
     </div>
   );

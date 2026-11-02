@@ -1,14 +1,16 @@
 // Tabel baris satu pembelian di halaman detail: qty, harga beli, subtotal,
 // jejak harga modal sebelum → sesudah, dan harga jual baru bila diubah.
 // Tanpa pencarian/halaman (data table) karena barisnya sedikit.
+// HP (< md): daftar baris (components/mobile-list.tsx).
 
 import Link from "next/link";
+import { DesktopTable, MobileList, MobileListItem, MobileListRow, MobileListTotal } from "@/components/mobile-list";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { PurchaseItemDetail } from "@/features/purchases/queries";
 import { formatRupiah } from "@/lib/format";
 
 export function PurchaseItemsTable({ items, total }: { items: PurchaseItemDetail[]; total: number }) {
-  return (
+  const table = (
     <Table>
       <TableHeader>
         <TableRow>
@@ -66,5 +68,39 @@ export function PurchaseItemsTable({ items, total }: { items: PurchaseItemDetail
         </TableRow>
       </TableFooter>
     </Table>
+  );
+
+  return (
+    <>
+      <DesktopTable>{table}</DesktopTable>
+      <MobileList>
+        {items.map((item) => (
+          <MobileListItem key={item.id}>
+            <MobileListRow>
+              <Link href={`/products/${item.productId}`} className="min-w-0 font-medium hover:underline">
+                {item.productName}
+              </Link>
+              <span className="font-semibold whitespace-nowrap tabular-nums">{formatRupiah(item.subtotal)}</span>
+            </MobileListRow>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {item.qty.toLocaleString("id-ID")} {item.unit} × {formatRupiah(item.unitCost)}
+            </span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              Modal {formatRupiah(item.costPriceBefore)} →{" "}
+              <span className="text-foreground">{formatRupiah(item.costPriceAfter)}</span>
+            </span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              Harga jual{" "}
+              {item.newSellingPrice == null ? (
+                "tetap"
+              ) : (
+                <span className="text-foreground">baru {formatRupiah(item.newSellingPrice)}</span>
+              )}
+            </span>
+          </MobileListItem>
+        ))}
+        <MobileListTotal label="Total" value={formatRupiah(total)} />
+      </MobileList>
+    </>
   );
 }

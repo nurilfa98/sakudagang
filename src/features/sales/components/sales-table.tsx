@@ -6,6 +6,7 @@
 //   filter aktif sampai user memilih tanggal lain.
 // - Kolom Laba hanya untuk pemegang product:view-cost (nilainya null untuk Kasir).
 // - Penjualan yang dibatalkan tetap tampil, nomornya dicoret.
+// - HP (< md): kartu (SaleCard), 10 dulu lalu +10 saat di-scroll.
 
 "use client";
 
@@ -210,6 +211,7 @@ export function SalesTable({
       emptyMessage={date === today ? "Belum ada penjualan hari ini." : "Tidak ada penjualan pada tanggal ini."}
       activeFilterCount={activeFilterCount}
       pending={pending}
+      renderCard={(row) => <SaleCard row={row} withCost={withCost} />}
       filters={
         <DataTableFilters
           canReset={activeFilterCount > 0}
@@ -245,5 +247,54 @@ export function SalesTable({
         </DataTableFilters>
       }
     />
+  );
+}
+
+// Kartu satu penjualan untuk HP. Seluruh kartu bisa diklik (link dibentangkan
+// lewat ::after). Isinya sama dengan kolom tabel; laba hanya bila withCost.
+function SaleCard({ row, withCost }: { row: SaleListItem; withCost: boolean }) {
+  const voided = row.status === "VOIDED";
+  return (
+    <div className="relative flex flex-col gap-2 rounded-lg border bg-card p-3 transition-colors hover:bg-muted/50">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-col">
+          <Link
+            href={`/sales/${row.id}`}
+            className={cn(
+              "font-mono font-medium after:absolute after:inset-0 hover:underline",
+              voided && "text-muted-foreground line-through",
+            )}
+          >
+            {row.number}
+          </Link>
+          {row.customerName && <span className="truncate text-xs text-muted-foreground">{row.customerName}</span>}
+        </div>
+        <SaleStatusBadge status={row.status} />
+      </div>
+      <div>
+        <PaymentMethodBadge method={row.paymentMethod} paymentStatus={row.paymentStatus} />
+      </div>
+      <div className="flex items-end justify-between gap-2 border-t pt-2">
+        <span className="min-w-0 truncate text-xs text-muted-foreground">
+          {row.timeLabel} · {row.itemCount.toLocaleString("id-ID")} barang · {row.createdByName}
+        </span>
+        <div className="flex shrink-0 flex-col items-end">
+          <span className={cn("font-semibold whitespace-nowrap tabular-nums", voided && "text-muted-foreground line-through")}>
+            {formatRupiah(row.total)}
+          </span>
+          {withCost && row.grossProfit != null && (
+            <span
+              className={cn(
+                "text-xs whitespace-nowrap text-muted-foreground tabular-nums",
+                voided && "line-through",
+                row.grossProfit < 0 && "text-rose-700 dark:text-rose-300",
+              )}
+            >
+              Laba {formatRupiah(row.grossProfit)}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

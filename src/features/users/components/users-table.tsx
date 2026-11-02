@@ -6,6 +6,7 @@
 // - `filters` opsional: halaman detail toko memakai tabel ini tanpa panel
 //   filter (hanya pencarian & halaman).
 // - Seluruh baris bisa diklik lewat link di kolom Nama.
+// - HP (< md): kartu (UserCard), 10 dulu lalu +10 saat di-scroll.
 
 "use client";
 
@@ -135,6 +136,7 @@ export function UsersTable({
       emptyMessage={activeFilterCount > 0 ? "Tidak ada pengguna pada filter ini." : "Belum ada pengguna."}
       activeFilterCount={activeFilterCount}
       pending={pending}
+      renderCard={(row) => <UserCard row={row} showStore={showStore} />}
       filters={
         filters && (
           <DataTableFilters
@@ -166,5 +168,28 @@ export function UsersTable({
         )
       }
     />
+  );
+}
+
+// Kartu satu pengguna untuk HP. Seluruh kartu bisa diklik (link dibentangkan
+// lewat ::after). Isinya sama dengan kolom tabel.
+function UserCard({ row, showStore }: { row: Row; showStore: boolean }) {
+  const contact = [showStore ? row.storeName : null, row.phoneLabel].filter(Boolean).join(" · ");
+  return (
+    <div className="relative flex flex-col gap-2 rounded-lg border bg-card p-3 transition-colors hover:bg-muted/50">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-col">
+          <Link href={`/users/${row.id}`} className="truncate font-medium after:absolute after:inset-0 hover:underline">
+            {row.fullName}
+          </Link>
+          <span className="truncate text-xs text-muted-foreground">{row.email}</span>
+        </div>
+        <UserStatusBadge user={row} />
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t pt-2">
+        <span className="min-w-0 truncate text-xs text-muted-foreground tabular-nums">{contact || "-"}</span>
+        <RoleBadge role={row.role} />
+      </div>
+    </div>
   );
 }

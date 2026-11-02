@@ -1,7 +1,9 @@
 // Tabel baris satu penjualan di halaman detail. Kolom harga modal & laba
 // hanya bila nilainya dikirim server (Pemilik); untuk Kasir null.
+// HP (< md): daftar baris (components/mobile-list.tsx).
 
 import Link from "next/link";
+import { DesktopTable, MobileList, MobileListItem, MobileListRow, MobileListTotal } from "@/components/mobile-list";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { SaleItemDetail } from "@/features/sales/queries";
 import { formatRupiah } from "@/lib/format";
@@ -20,7 +22,7 @@ export function SaleItemsTable({
 }) {
   const withCost = totalGrossProfit != null;
 
-  return (
+  const table = (
     <Table>
       <TableHeader>
         <TableRow>
@@ -90,5 +92,57 @@ export function SaleItemsTable({
         </TableRow>
       </TableFooter>
     </Table>
+  );
+
+  return (
+    <>
+      <DesktopTable>{table}</DesktopTable>
+      <MobileList>
+        {items.map((item) => (
+          <MobileListItem key={item.id}>
+            <MobileListRow>
+              {linkProducts ? (
+                <Link href={`/products/${item.productId}`} className="min-w-0 font-medium hover:underline">
+                  {item.productName}
+                </Link>
+              ) : (
+                <span className="min-w-0 font-medium">{item.productName}</span>
+              )}
+              <span className="font-semibold whitespace-nowrap tabular-nums">{formatRupiah(item.subtotal)}</span>
+            </MobileListRow>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {item.qty.toLocaleString("id-ID")} {item.unit} × {formatRupiah(item.sellingPrice)}
+            </span>
+            {withCost && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                Modal {item.costPrice == null ? "-" : formatRupiah(item.costPrice)} · Laba{" "}
+                <span className={cn((item.grossProfit ?? 0) < 0 && "text-rose-700 dark:text-rose-300")}>
+                  {item.grossProfit == null ? "-" : formatRupiah(item.grossProfit)}
+                </span>
+              </span>
+            )}
+          </MobileListItem>
+        ))}
+        <MobileListTotal
+          label="Total"
+          value={formatRupiah(total)}
+          extra={
+            withCost && (
+              <div className="flex justify-between gap-3 text-sm text-muted-foreground">
+                <span>Laba kotor</span>
+                <span
+                  className={cn(
+                    "whitespace-nowrap tabular-nums",
+                    (totalGrossProfit ?? 0) < 0 && "text-rose-700 dark:text-rose-300",
+                  )}
+                >
+                  {formatRupiah(totalGrossProfit)}
+                </span>
+              </div>
+            )
+          }
+        />
+      </MobileList>
+    </>
   );
 }
