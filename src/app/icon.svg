@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Logo SakuDagang: saku (kantong) dengan koin emas yang masuk ke dalamnya.
+       Versi React-nya ada di src/components/layout/logo-mark.tsx; ubah keduanya bersamaan.
+       Setelah diubah, buat ulang ikon PNG: pnpm icons:generate
+       Script itu mencari radius sudut 112 dan grup ber-id "mark", jadi keduanya jangan diubah. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#075985"/>
+    </linearGradient>
+    <radialGradient id="shine" cx=".25" cy=".15" r=".8">
+      <stop offset="0" stop-color="#fff" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="coin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#shine)"/>
+  <g id="mark">
+    <circle cx="256" cy="180" r="56" fill="url(#coin)"/>
+    <circle cx="256" cy="180" r="37" fill="none" stroke="#b45309" stroke-opacity=".35" stroke-width="7"/>
+    <path d="M140 206 H372 V312 L256 378 L140 312 Z" fill="#fff" stroke="#fff" stroke-width="28" stroke-linejoin="round"/>
+    <path d="M166 240 H346" stroke="#0284c7" stroke-opacity=".45" stroke-width="8" stroke-linecap="round" stroke-dasharray="1 18"/>
+  </g>
+</svg>

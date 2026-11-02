@@ -14,8 +14,9 @@
 
 "use client";
 
-import { KeyRoundIcon, LogOutIcon, UserRoundIcon } from "lucide-react";
+import { KeyRoundIcon, LogOutIcon, SmartphoneIcon, UserRoundIcon } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +30,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLogout } from "@/features/auth/hooks/use-logout";
+import { InstallAppDialog } from "@/features/pwa/components/install-app-dialog";
+import { useInstallApp } from "@/features/pwa/hooks/use-install-app";
 import type { CurrentUser } from "@/lib/auth/dal";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 
@@ -44,6 +47,10 @@ function getInitials(name: string) {
 
 export function UserMenu({ user }: { user: Pick<CurrentUser, "id" | "fullName" | "email" | "role"> }) {
   const { isPending, logout } = useLogout();
+  // "Pasang aplikasi": hanya tampil di HP yang belum memasang SakuDagang
+  // (lihat features/pwa/hooks/use-install-app.ts).
+  const install = useInstallApp();
+  const [installGuideOpen, setInstallGuideOpen] = useState(false);
 
   return (
     <DropdownMenu>
@@ -74,6 +81,14 @@ export function UserMenu({ user }: { user: Pick<CurrentUser, "id" | "fullName" |
           <KeyRoundIcon />
           Ganti password
         </DropdownMenuItem>
+        {install.mode !== "hidden" && (
+          <DropdownMenuItem
+            onClick={() => (install.mode === "native" ? install.promptInstall() : setInstallGuideOpen(true))}
+          >
+            <SmartphoneIcon />
+            Pasang aplikasi
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         {/* Server Action dipanggil dari event handler; detail alur logout
             ada di hooks/use-logout.ts */}
@@ -82,6 +97,12 @@ export function UserMenu({ user }: { user: Pick<CurrentUser, "id" | "fullName" |
           {isPending ? "Keluar..." : "Keluar"}
         </DropdownMenuItem>
       </DropdownMenuContent>
+
+      {/* Dialog petunjuk pasang (iPhone & browser tanpa dialog bawaan). Sengaja
+          di luar DropdownMenuContent: isi dropdown hilang begitu item diklik. */}
+      {(install.mode === "ios" || install.mode === "manual") && (
+        <InstallAppDialog platform={install.mode} open={installGuideOpen} onOpenChange={setInstallGuideOpen} />
+      )}
     </DropdownMenu>
   );
 }
