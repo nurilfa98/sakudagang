@@ -16,14 +16,14 @@
 // - node_modules/next/dist/docs/01-app/02-guides/progressive-web-apps.md
 
 import type { MetadataRoute } from "next";
-import { PRODUCT_NAME, PRODUCT_TAGLINE } from "@/lib/brand";
+import { PRODUCT_DESCRIPTION, PRODUCT_NAME, PRODUCT_TAGLINE } from "@/lib/brand";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
     name: `${PRODUCT_NAME} – ${PRODUCT_TAGLINE}`,
     short_name: PRODUCT_NAME,
-    description: "Kasir, stok barang, dan laporan laba untuk toko kecil",
+    description: PRODUCT_DESCRIPTION,
     lang: "id",
     start_url: "/",
     scope: "/",

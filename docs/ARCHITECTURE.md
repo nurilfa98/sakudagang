@@ -15,8 +15,8 @@ sakusembako/
 ├── scripts/                   # create-superadmin.mjs (akun developer, tersembunyi)
 ├── src/
 │   ├── app/                   # ROUTING SAJA — tipis, tidak ada logika bisnis
-│   │   ├── (auth)/layout.tsx               # tampilan tengah tanpa header & menu
-│   │   ├── (auth)/login/page.tsx
+│   │   ├── (auth)/layout.tsx               # tampilan tengah tanpa header & menu (ganti password)
+│   │   ├── (login)/login/page.tsx          # login: info + kartu form di PC, form saja di HP
 │   │   ├── (auth)/change-password/page.tsx
 │   │   ├── (app)/layout.tsx                # header (logo, breadcrumb, toko, user) setelah login, tanpa sidebar
 │   │   ├── (app)/page.tsx                  # kotak menu (+ cari menu), halaman pertama setelah login

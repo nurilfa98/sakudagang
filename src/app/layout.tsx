@@ -2,7 +2,8 @@
 // Isinya hanya hal global: <html>, font, CSS, dan provider yang dipakai di mana-mana
 // (tema terang/gelap, tooltip, toast).
 // Layout khusus (header, kotak menu) ada di route group masing-masing:
-// - src/app/(auth)/layout.tsx → halaman login
+// - src/app/(login)/login/page.tsx → halaman login (info + kartu form di PC)
+// - src/app/(auth)/layout.tsx → ganti password
 // - src/app/(app)/layout.tsx  → halaman setelah login
 //
 // Referensi: node_modules/next/dist/docs/01-app/01-getting-started/03-layouts-and-pages.md
@@ -13,6 +14,7 @@ import { ThemeProvider } from "@/components/theme/theme-provider";
 import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { InstallAppListener } from "@/features/pwa/components/install-app-listener";
+import { PRODUCT_DESCRIPTION } from "@/lib/brand";
 import "./globals.css";
 
 // globals.css (dari shadcn) memakai variabel --font-sans, jadi nama
@@ -30,7 +32,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   // Halaman cukup menulis `title: "Masuk"`, hasilnya "Masuk | SakuDagang".
   title: { default: "SakuDagang", template: "%s | SakuDagang" },
-  description: "Kasir, stok barang, dan laporan laba untuk toko kecil",
+  description: PRODUCT_DESCRIPTION,
   applicationName: "SakuDagang",
   // Untuk iPhone/iPad: saat dipasang lewat Share → "Tambahkan ke Layar Utama",
   // SakuDagang terbuka layar penuh dengan nama ini di bawah ikonnya.
